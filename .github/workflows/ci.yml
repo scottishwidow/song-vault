@@ -75,4 +75,3 @@ jobs:
           python-version: "3.12"
       - run: uv sync --dev
       - run: uv run pre-commit run --all-files
-
