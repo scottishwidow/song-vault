@@ -26,7 +26,7 @@ The first usable version is an admin-operated repertoire bot.
 - [x] Establish project baseline with `uv`, CI, linting, formatting, and pre-commit
 - [x] Define the initial song data model and migration flow
 - [x] Implement admin-only repertoire CRUD command flows
-- [ ] Add Postgres-backed integration tests for migrations and persistence
+- [x] Add Postgres-backed integration tests for migrations and persistence
 - [ ] Improve guided edit flows with field previews and validation feedback
 - [ ] Add pagination or compact summaries for long `/songs` and `/search` results
 - [ ] Support richer song metadata such as capo, time signature, and arrangement notes
