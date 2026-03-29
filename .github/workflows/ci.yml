@@ -1,0 +1,78 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - feat/**
+  pull_request:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: uv sync --dev
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+
+  typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: uv sync --dev
+      - run: uv run mypy
+
+  tests:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: song_vault
+          POSTGRES_USER: song_vault
+          POSTGRES_PASSWORD: song_vault
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U song_vault -d song_vault"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      TELEGRAM_BOT_TOKEN: ci-placeholder-token
+      ADMIN_TELEGRAM_USER_IDS: 1
+      DATABASE_URL: postgresql+asyncpg://song_vault:song_vault@localhost:5432/song_vault
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: uv sync --dev
+      - run: uv run alembic upgrade head
+      - run: uv run pytest
+
+  pre-commit:
+    runs-on: ubuntu-latest
+    env:
+      TELEGRAM_BOT_TOKEN: ci-placeholder-token
+      ADMIN_TELEGRAM_USER_IDS: 1
+      DATABASE_URL: postgresql+asyncpg://song_vault:song_vault@localhost:5432/song_vault
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: uv sync --dev
+      - run: uv run pre-commit run --all-files
+

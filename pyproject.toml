@@ -1,0 +1,72 @@
+[project]
+name = "song-vault"
+version = "0.1.0"
+description = "Telegram bot for repertoire management."
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+  "alembic>=1.15.0,<2.0.0",
+  "asyncpg>=0.30.0,<1.0.0",
+  "pydantic-settings>=2.8.0,<3.0.0",
+  "python-telegram-bot>=22.0,<23.0",
+  "sqlalchemy>=2.0.39,<3.0.0",
+]
+
+[dependency-groups]
+dev = [
+  "aiosqlite>=0.21.0,<1.0.0",
+  "mypy>=1.15.0,<2.0.0",
+  "pre-commit>=4.2.0,<5.0.0",
+  "pytest>=8.3.5,<9.0.0",
+  "pytest-asyncio>=0.26.0,<1.0.0",
+  "ruff>=0.11.0,<1.0.0",
+]
+
+[project.scripts]
+song-vault = "song_vault.app:main"
+
+[build-system]
+requires = ["hatchling>=1.27.0,<2.0.0"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/song_vault"]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+src = ["src", "tests"]
+extend-exclude = [".pre-commit-cache", ".uv-cache", ".venv"]
+
+[tool.ruff.lint]
+select = [
+  "E",
+  "F",
+  "I",
+  "B",
+  "UP",
+]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+asyncio_mode = "auto"
+
+[tool.mypy]
+python_version = "3.12"
+files = ["src"]
+strict = true
+disallow_any_generics = false
+plugins = []
+warn_unreachable = true
+pretty = true
+exclude = ["alembic"]
+
+[[tool.mypy.overrides]]
+module = [
+  "telegram.*",
+]
+ignore_missing_imports = true

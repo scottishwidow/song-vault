@@ -1,0 +1,82 @@
+import logging
+
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
+from telegram import BotCommand, Update
+from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
+
+from song_vault.bot.runtime import ENGINE_KEY, SETTINGS_KEY, SONG_SERVICE_KEY
+from song_vault.config.settings import Settings
+from song_vault.handlers.common import error_handler, help_command, start_command
+from song_vault.handlers.repertoire import (
+    archive_song_command,
+    build_add_song_handler,
+    build_edit_song_handler,
+    list_songs_command,
+    search_songs_command,
+    tags_command,
+)
+from song_vault.services.song_service import SongService
+
+logger = logging.getLogger(__name__)
+
+
+async def post_init(application: Application) -> None:
+    await application.bot.set_my_commands(
+        [
+            BotCommand("start", "Show the bot overview"),
+            BotCommand("help", "Show available commands"),
+            BotCommand("songs", "List active songs"),
+            BotCommand("search", "Search repertoire"),
+            BotCommand("addsong", "Add a new song"),
+            BotCommand("editsong", "Edit a song"),
+            BotCommand("archivesong", "Archive a song"),
+            BotCommand("tags", "List active tags"),
+        ]
+    )
+
+
+async def post_shutdown(application: Application) -> None:
+    engine = application.bot_data.get(ENGINE_KEY)
+    if isinstance(engine, AsyncEngine):
+        await engine.dispose()
+
+
+async def unknown_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    del context
+    if update.effective_message is not None:
+        await update.effective_message.reply_text(
+            "Unknown command. Use /help to see supported commands."
+        )
+
+
+def build_application(
+    *,
+    settings: Settings,
+    session_factory: async_sessionmaker[AsyncSession],
+    engine: AsyncEngine,
+) -> Application:
+    application = (
+        Application.builder()
+        .token(settings.telegram_bot_token.get_secret_value())
+        .post_init(post_init)
+        .post_shutdown(post_shutdown)
+        .build()
+    )
+
+    application.bot_data[SETTINGS_KEY] = settings
+    application.bot_data[SONG_SERVICE_KEY] = SongService(session_factory)
+    application.bot_data[ENGINE_KEY] = engine
+
+    application.add_handler(CommandHandler("start", start_command))
+    application.add_handler(CommandHandler("help", help_command))
+    application.add_handler(CommandHandler("songs", list_songs_command))
+    application.add_handler(CommandHandler("search", search_songs_command))
+    application.add_handler(CommandHandler("archivesong", archive_song_command))
+    application.add_handler(CommandHandler("tags", tags_command))
+    application.add_handler(build_add_song_handler())
+    application.add_handler(build_edit_song_handler())
+    application.add_handler(MessageHandler(filters.COMMAND, unknown_command))
+    application.add_error_handler(error_handler)
+
+    logger.info("Application initialized")
+    return application
