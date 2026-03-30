@@ -11,15 +11,33 @@ The first usable version is an admin-operated repertoire bot.
 - Guided edit-song flow
 - Soft-archive command
 - Tag listing
+- One current chart image per song, managed by admins
+- Admin-only chart upload and retrieval commands
+- S3-compatible chart storage for local/dev via MinIO
+
+## Chart handling
+
+Charts are part of the MVP as admin-managed image attachments.
+
+- A chart is an uploaded image attached to a song.
+- Each song has at most one active chart in the MVP.
+- Replacing a chart archives the previous chart metadata instead of deleting it.
+- Chart binaries live in S3-compatible object storage, with MinIO used in Docker Compose for local development.
+- Chart metadata is stored separately from the song record so future arrangement support remains possible.
+- Chart metadata includes optional `source_url` and optional chart key in the musical sense.
+- Chart upload happens in a dedicated step after song creation rather than inside `/addsong`.
+- Chart retrieval is admin-only in the MVP.
 
 ## Out of scope
 
-- Deployment and hosting
+- Deployment and hosting beyond local Docker Compose
 - Webhooks
 - Non-admin workflows
 - Role management
 - Approval flows
-- Media uploads or sheet storage
+- PDF chart uploads
+- Multiple active charts or arrangement management per song
+- OCR, preview generation, or other chart processing
 
 ## TODO
 
@@ -29,5 +47,6 @@ The first usable version is an admin-operated repertoire bot.
 - [x] Add Postgres-backed integration tests for migrations and persistence
 - [ ] Improve guided edit flows with field previews and validation feedback
 - [ ] Add pagination or compact summaries for long `/songs` and `/search` results
+- [ ] Add chart attachment storage, metadata persistence, and admin commands
 - [ ] Support richer song metadata such as capo, time signature, and arrangement notes
 - [ ] Add import/export support for repertoire backups
