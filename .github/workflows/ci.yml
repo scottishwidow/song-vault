@@ -5,7 +5,13 @@ on:
     branches:
       - main
       - feat/**
+    paths-ignore:
+      - ".codex/**"
+      - "**/*.md"
   pull_request:
+    paths-ignore:
+      - ".codex/**"
+      - "**/*.md"
 
 jobs:
   lint:
