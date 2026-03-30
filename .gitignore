@@ -11,4 +11,8 @@ htmlcov/
 dist/
 build/
 *.egg-info/
-.codex/
+.codex/*
+!.codex/config.toml
+!.codex/README.md
+!.codex/skills/
+!.codex/skills/**
