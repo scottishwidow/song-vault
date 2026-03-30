@@ -1,0 +1,13 @@
+[mcp_servers.github]
+command = "docker"
+args = [
+  "run",
+  "-i",
+  "--rm",
+  "-e",
+  "GITHUB_PERSONAL_ACCESS_TOKEN",
+  "-e",
+  "GITHUB_HOST",
+  "ghcr.io/github/github-mcp-server"
+]
+enabled = false
