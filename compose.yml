@@ -42,16 +42,14 @@ services:
   bot:
     build:
       context: .
-      dockerfile: Dockerfile
-    image: song-vault:local
-    env_file:
-      - .env
     environment:
-      DATABASE_URL: postgresql+asyncpg://song_vault:song_vault@db:5432/song_vault
-      CHART_STORAGE_ENDPOINT_URL: http://minio:9000
-      CHART_STORAGE_BUCKET: song-vault-charts
-      CHART_STORAGE_ACCESS_KEY_ID: songvault
-      CHART_STORAGE_SECRET_ACCESS_KEY: songvaultsecret
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
+      DATABASE_URL: ${DATABASE_URL}
+      ADMIN_TELEGRAM_USER_IDS: ${ADMIN_TELEGRAM_USER_IDS}
+      CHART_STORAGE_ENDPOINT_URL: ${CHART_STORAGE_ENDPOINT_URL}
+      CHART_STORAGE_BUCKET: ${CHART_STORAGE_BUCKET}
+      CHART_STORAGE_ACCESS_KEY_ID: ${CHART_STORAGE_ACCESS_KEY_ID}
+      CHART_STORAGE_SECRET_ACCESS_KEY: ${CHART_STORAGE_SECRET_ACCESS_KEY}
       CHART_STORAGE_USE_SSL: "false"
       CHART_STORAGE_FORCE_PATH_STYLE: "true"
     depends_on:
