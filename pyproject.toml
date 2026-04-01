@@ -6,6 +6,7 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
   "alembic>=1.15.0,<2.0.0",
+  "aioboto3>=13.4.0,<14.0.0",
   "asyncpg>=0.30.0,<1.0.0",
   "pydantic-settings>=2.8.0,<3.0.0",
   "python-telegram-bot>=22.0,<23.0",
@@ -68,5 +69,7 @@ exclude = ["alembic"]
 [[tool.mypy.overrides]]
 module = [
   "telegram.*",
+  "aioboto3",
+  "botocore.*",
 ]
 ignore_missing_imports = true

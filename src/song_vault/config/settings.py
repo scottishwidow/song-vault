@@ -19,6 +19,28 @@ class Settings(BaseSettings):
     database_url: str = Field(alias="DATABASE_URL")
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")
     bot_poll_interval: float = Field(default=1.0, alias="BOT_POLL_INTERVAL")
+    chart_storage_endpoint_url: str = Field(
+        default="http://localhost:9000",
+        alias="CHART_STORAGE_ENDPOINT_URL",
+    )
+    chart_storage_region: str = Field(default="us-east-1", alias="CHART_STORAGE_REGION")
+    chart_storage_bucket: str = Field(
+        default="song-vault-charts",
+        alias="CHART_STORAGE_BUCKET",
+    )
+    chart_storage_access_key_id: SecretStr = Field(
+        default_factory=lambda: SecretStr("songvault"),
+        alias="CHART_STORAGE_ACCESS_KEY_ID",
+    )
+    chart_storage_secret_access_key: SecretStr = Field(
+        default_factory=lambda: SecretStr("songvaultsecret"),
+        alias="CHART_STORAGE_SECRET_ACCESS_KEY",
+    )
+    chart_storage_use_ssl: bool = Field(default=False, alias="CHART_STORAGE_USE_SSL")
+    chart_storage_force_path_style: bool = Field(
+        default=True,
+        alias="CHART_STORAGE_FORCE_PATH_STYLE",
+    )
 
     @field_validator("admin_telegram_user_ids", mode="before")
     @classmethod
