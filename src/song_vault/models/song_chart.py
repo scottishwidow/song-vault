@@ -31,7 +31,11 @@ class SongChart(Base):
     source_url: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     chart_key: Mapped[str | None] = mapped_column(String(32), nullable=True)
     status: Mapped[SongChartStatus] = mapped_column(
-        Enum(SongChartStatus, name="song_chart_status"),
+        Enum(
+            SongChartStatus,
+            name="song_chart_status",
+            values_callable=lambda members: [member.value for member in members],
+        ),
         default=SongChartStatus.ACTIVE,
         nullable=False,
         index=True,
