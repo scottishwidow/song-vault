@@ -21,10 +21,10 @@ Song Vault is a Python Telegram bot for repertoire management. It uses `python-t
 
 2. Set `TELEGRAM_BOT_TOKEN` in `.env`.
 
-3. Start the full local stack (Postgres, MinIO, bucket init, and bot):
+3. Build and start the full local stack (Postgres, MinIO, bucket init, and bot):
 
    ```bash
-   docker compose up -d
+   docker compose up -d --build
    ```
 
 4. Follow logs:

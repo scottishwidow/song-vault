@@ -40,10 +40,10 @@ services:
       MINIO_ROOT_PASSWORD: songvaultsecret
     restart: "no"
   bot:
-    image: ghcr.io/astral-sh/uv:python3.12-bookworm
-    working_dir: /app
-    volumes:
-      - .:/app
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: song-vault:local
     env_file:
       - .env
     environment:
@@ -59,7 +59,7 @@ services:
         condition: service_healthy
       minio-init:
         condition: service_completed_successfully
-    command: ["/bin/sh", "-c", "uv run alembic upgrade head && uv run song-vault"]
+    restart: unless-stopped
 
 volumes:
   postgres-data:
