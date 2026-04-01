@@ -25,7 +25,11 @@ class Song(Base):
     tags: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
     notes: Mapped[str | None] = mapped_column(String(1000), nullable=True)
     status: Mapped[SongStatus] = mapped_column(
-        Enum(SongStatus, name="song_status"),
+        Enum(
+            SongStatus,
+            name="song_status",
+            values_callable=lambda members: [member.value for member in members],
+        ),
         default=SongStatus.ACTIVE,
         nullable=False,
         index=True,

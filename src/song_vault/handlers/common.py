@@ -18,6 +18,8 @@ def help_text() -> str:
             "/editsong <id> - guided song update",
             "/archivesong <id> - archive a song",
             "/tags - list known tags",
+            "/uploadchart <song_id> - upload or replace a chart image (admin only)",
+            "/chart <song_id> - fetch the current chart image",
         ]
     )
 

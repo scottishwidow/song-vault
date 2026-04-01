@@ -10,6 +10,7 @@ import sqlalchemy as sa
 from alembic import command
 from alembic.config import Config
 from alembic.util.exc import CommandError
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from song_vault.db.session import build_session_factory, create_engine
@@ -69,7 +70,7 @@ async def postgres_session_factory(
 @pytest.mark.asyncio
 async def test_migrations_create_expected_schema(postgres_engine: AsyncEngine) -> None:
     async with postgres_engine.connect() as connection:
-        columns_result = await connection.execute(
+        song_columns_result = await connection.execute(
             sa.text(
                 """
                 SELECT column_name
@@ -79,7 +80,19 @@ async def test_migrations_create_expected_schema(postgres_engine: AsyncEngine) -
                 """
             )
         )
-        columns = [row[0] for row in columns_result.all()]
+        song_columns = [row[0] for row in song_columns_result.all()]
+
+        chart_columns_result = await connection.execute(
+            sa.text(
+                """
+                SELECT column_name
+                FROM information_schema.columns
+                WHERE table_name = 'song_charts'
+                ORDER BY ordinal_position
+                """
+            )
+        )
+        chart_columns = [row[0] for row in chart_columns_result.all()]
 
         enum_result = await connection.execute(
             sa.text(
@@ -94,7 +107,32 @@ async def test_migrations_create_expected_schema(postgres_engine: AsyncEngine) -
         )
         enum_labels = [row[0] for row in enum_result.all()]
 
-    assert columns == [
+        chart_enum_result = await connection.execute(
+            sa.text(
+                """
+                SELECT e.enumlabel
+                FROM pg_type t
+                JOIN pg_enum e ON e.enumtypid = t.oid
+                WHERE t.typname = 'song_chart_status'
+                ORDER BY e.enumsortorder
+                """
+            )
+        )
+        chart_enum_labels = [row[0] for row in chart_enum_result.all()]
+
+        index_result = await connection.execute(
+            sa.text(
+                """
+                SELECT indexdef
+                FROM pg_indexes
+                WHERE tablename = 'song_charts'
+                  AND indexname = 'uq_song_charts_active_song'
+                """
+            )
+        )
+        active_chart_index = index_result.scalar_one()
+
+    assert song_columns == [
         "id",
         "title",
         "artist_or_source",
@@ -106,7 +144,23 @@ async def test_migrations_create_expected_schema(postgres_engine: AsyncEngine) -
         "created_at",
         "updated_at",
     ]
+    assert chart_columns == [
+        "id",
+        "song_id",
+        "storage_bucket",
+        "storage_key",
+        "original_filename",
+        "content_type",
+        "file_size_bytes",
+        "source_url",
+        "chart_key",
+        "status",
+        "created_at",
+        "updated_at",
+    ]
     assert enum_labels == ["active", "archived"]
+    assert chart_enum_labels == ["active", "archived"]
+    assert "status = 'active'" in active_chart_index
 
 
 @pytest.mark.asyncio
@@ -146,3 +200,82 @@ async def test_song_service_persists_in_postgres(
 
     all_titles = [song.title for song in await song_service.list_songs(include_archived=True)]
     assert all_titles == ["King of Kings", "No Longer Slaves"]
+
+
+@pytest.mark.asyncio
+async def test_song_chart_active_constraint_is_enforced(
+    postgres_session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    song_service = SongService(postgres_session_factory)
+    song = await song_service.create_song(
+        SongCreate(
+            title="Holy Forever",
+            artist_or_source="Bethel Music",
+            key="E",
+        )
+    )
+
+    async with postgres_session_factory() as session:
+        await session.execute(
+            sa.text(
+                """
+                INSERT INTO song_charts (
+                    song_id,
+                    storage_bucket,
+                    storage_key,
+                    original_filename,
+                    content_type,
+                    file_size_bytes,
+                    source_url,
+                    chart_key,
+                    status
+                )
+                VALUES (
+                    :song_id,
+                    'song-vault-charts',
+                    'songs/holy-forever-v1.jpg',
+                    'holy-forever-v1.jpg',
+                    'image/jpeg',
+                    12,
+                    NULL,
+                    NULL,
+                    'active'
+                )
+                """
+            ),
+            {"song_id": song.id},
+        )
+        await session.commit()
+
+    with pytest.raises(IntegrityError):
+        async with postgres_session_factory() as session:
+            await session.execute(
+                sa.text(
+                    """
+                    INSERT INTO song_charts (
+                        song_id,
+                        storage_bucket,
+                        storage_key,
+                        original_filename,
+                        content_type,
+                        file_size_bytes,
+                        source_url,
+                        chart_key,
+                        status
+                    )
+                    VALUES (
+                        :song_id,
+                        'song-vault-charts',
+                        'songs/holy-forever-v2.jpg',
+                        'holy-forever-v2.jpg',
+                        'image/jpeg',
+                        12,
+                        NULL,
+                        NULL,
+                        'active'
+                    )
+                    """
+                ),
+                {"song_id": song.id},
+            )
+            await session.commit()

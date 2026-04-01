@@ -14,6 +14,51 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: songvault
+      MINIO_ROOT_PASSWORD: songvaultsecret
+    volumes:
+      - minio-data:/data
+  minio-init:
+    image: minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_started
+    entrypoint: >
+      /bin/sh -c "
+      until mc alias set local http://minio:9000 $$MINIO_ROOT_USER $$MINIO_ROOT_PASSWORD; do sleep 1; done &&
+      mc mb --ignore-existing local/song-vault-charts
+      "
+    environment:
+      MINIO_ROOT_USER: songvault
+      MINIO_ROOT_PASSWORD: songvaultsecret
+    restart: "no"
+  bot:
+    build:
+      context: .
+    environment:
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
+      DATABASE_URL: ${DATABASE_URL}
+      ADMIN_TELEGRAM_USER_IDS: ${ADMIN_TELEGRAM_USER_IDS}
+      CHART_STORAGE_ENDPOINT_URL: ${CHART_STORAGE_ENDPOINT_URL}
+      CHART_STORAGE_BUCKET: ${CHART_STORAGE_BUCKET}
+      CHART_STORAGE_ACCESS_KEY_ID: ${CHART_STORAGE_ACCESS_KEY_ID}
+      CHART_STORAGE_SECRET_ACCESS_KEY: ${CHART_STORAGE_SECRET_ACCESS_KEY}
+      CHART_STORAGE_USE_SSL: "false"
+      CHART_STORAGE_FORCE_PATH_STYLE: "true"
+    depends_on:
+      db:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+    restart: unless-stopped
 
 volumes:
   postgres-data:
+  minio-data:

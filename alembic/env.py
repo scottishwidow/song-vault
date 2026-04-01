@@ -9,7 +9,7 @@ from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
 from song_vault.db.base import metadata
-from song_vault.models import Song  # noqa: F401
+from song_vault.models import Song, SongChart  # noqa: F401
 
 config = context.config
 
