@@ -195,12 +195,23 @@ def build_upload_chart_handler() -> ConversationHandler:
     return ConversationHandler(
         entry_points=[CommandHandler("uploadchart", upload_chart_start)],
         states={
-            UPLOAD_MEDIA: [MessageHandler(filters.ALL & ~filters.COMMAND, upload_chart_media)],
+            UPLOAD_MEDIA: [
+                MessageHandler(
+                    filters.ALL & ~filters.COMMAND & filters.UpdateType.MESSAGE,
+                    upload_chart_media,
+                )
+            ],
             UPLOAD_SOURCE_URL: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, upload_chart_source_url)
+                MessageHandler(
+                    filters.TEXT & ~filters.COMMAND & filters.UpdateType.MESSAGE,
+                    upload_chart_source_url,
+                )
             ],
             UPLOAD_CHART_KEY: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, upload_chart_chart_key)
+                MessageHandler(
+                    filters.TEXT & ~filters.COMMAND & filters.UpdateType.MESSAGE,
+                    upload_chart_chart_key,
+                )
             ],
         },
         fallbacks=[CommandHandler("cancel", cancel_upload_chart)],
