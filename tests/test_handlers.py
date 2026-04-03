@@ -3,16 +3,18 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
+from telegram import Chat, Message, Update, User
 
 from bot.runtime import BACKUP_SERVICE_KEY, CHART_SERVICE_KEY, SETTINGS_KEY, SONG_SERVICE_KEY
 from config.settings import Settings
 from handlers.backup import (
     IMPORT_BACKUP_UPLOAD,
+    build_import_backup_handler,
     export_backup_command,
     import_backup_file,
     import_backup_start,
 )
-from handlers.charts import chart_command, upload_chart_start
+from handlers.charts import build_upload_chart_handler, chart_command, upload_chart_start
 from handlers.common import ensure_admin
 from handlers.repertoire import (
     EDIT_FIELD,
@@ -20,6 +22,8 @@ from handlers.repertoire import (
     EDIT_SONG_ID_KEY,
     EDIT_VALUE,
     RESULT_MESSAGE_CHAR_LIMIT,
+    build_add_song_handler,
+    build_edit_song_handler,
     edit_song_field,
     edit_song_start,
     edit_song_value,
@@ -107,6 +111,21 @@ def build_song(
     return song
 
 
+def build_telegram_update(*, edited: bool) -> Update:
+    user = User(id=1, first_name="Test", is_bot=False)
+    chat = Chat(id=1, type="private")
+    message = Message(
+        message_id=1,
+        date=datetime.now(UTC),
+        chat=chat,
+        from_user=user,
+        text="value",
+    )
+    if edited:
+        return Update(update_id=2, edited_message=message)
+    return Update(update_id=1, message=message)
+
+
 @pytest.mark.asyncio
 async def test_ensure_admin_rejects_non_admin() -> None:
     update, reply = build_update(user_id=999)
@@ -116,6 +135,50 @@ async def test_ensure_admin_rejects_non_admin() -> None:
 
     assert allowed is False
     reply.assert_awaited_once_with("Admin access is required for this command.")
+
+
+def test_add_song_conversation_filters_ignore_edited_messages() -> None:
+    handler = build_add_song_handler()
+    message_update = build_telegram_update(edited=False)
+    edited_update = build_telegram_update(edited=True)
+
+    for state_handlers in handler.states.values():
+        for state_handler in state_handlers:
+            assert bool(state_handler.check_update(message_update))
+            assert not bool(state_handler.check_update(edited_update))
+
+
+def test_edit_song_conversation_filters_ignore_edited_messages() -> None:
+    handler = build_edit_song_handler()
+    message_update = build_telegram_update(edited=False)
+    edited_update = build_telegram_update(edited=True)
+
+    for state_handlers in handler.states.values():
+        for state_handler in state_handlers:
+            assert bool(state_handler.check_update(message_update))
+            assert not bool(state_handler.check_update(edited_update))
+
+
+def test_upload_chart_conversation_filters_ignore_edited_messages() -> None:
+    handler = build_upload_chart_handler()
+    message_update = build_telegram_update(edited=False)
+    edited_update = build_telegram_update(edited=True)
+
+    for state_handlers in handler.states.values():
+        for state_handler in state_handlers:
+            assert bool(state_handler.check_update(message_update))
+            assert not bool(state_handler.check_update(edited_update))
+
+
+def test_import_backup_conversation_filters_ignore_edited_messages() -> None:
+    handler = build_import_backup_handler()
+    message_update = build_telegram_update(edited=False)
+    edited_update = build_telegram_update(edited=True)
+
+    for state_handlers in handler.states.values():
+        for state_handler in state_handlers:
+            assert bool(state_handler.check_update(message_update))
+            assert not bool(state_handler.check_update(edited_update))
 
 
 @pytest.mark.asyncio

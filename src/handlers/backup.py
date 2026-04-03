@@ -101,7 +101,10 @@ def build_import_backup_handler() -> ConversationHandler:
         entry_points=[CommandHandler("importbackup", import_backup_start)],
         states={
             IMPORT_BACKUP_UPLOAD: [
-                MessageHandler(filters.ALL & ~filters.COMMAND, import_backup_file)
+                MessageHandler(
+                    filters.ALL & ~filters.COMMAND & filters.UpdateType.MESSAGE,
+                    import_backup_file,
+                )
             ],
         },
         fallbacks=[CommandHandler("cancel", cancel_import_backup)],

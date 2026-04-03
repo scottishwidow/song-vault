@@ -780,7 +780,7 @@ def _text_step(
         Coroutine[Any, Any, object],
     ],
 ) -> BaseHandler:
-    return MessageHandler(filters.TEXT & ~filters.COMMAND, callback)
+    return MessageHandler(filters.TEXT & ~filters.COMMAND & filters.UpdateType.MESSAGE, callback)
 
 
 def build_add_song_handler() -> ConversationHandler:
