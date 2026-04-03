@@ -8,10 +8,10 @@ from uuid import uuid4
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from song_vault.models.song import Song
-from song_vault.models.song_chart import SongChart, SongChartStatus
-from song_vault.services.song_service import SongNotFoundError
-from song_vault.storage.chart_storage import ChartStorage
+from models.song import Song
+from models.song_chart import SongChart, SongChartStatus
+from services.song_service import SongNotFoundError
+from storage.chart_storage import ChartStorage
 
 
 class SongChartNotFoundError(Exception):

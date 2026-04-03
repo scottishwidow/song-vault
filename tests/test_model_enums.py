@@ -1,7 +1,7 @@
 from sqlalchemy.dialects import postgresql
 
-from song_vault.models.song import Song, SongStatus
-from song_vault.models.song_chart import SongChart, SongChartStatus
+from models.song import Song, SongStatus
+from models.song_chart import SongChart, SongChartStatus
 
 
 def test_song_status_uses_enum_values_for_postgres_bind() -> None:

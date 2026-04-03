@@ -7,7 +7,7 @@ from sqlalchemy import String, func, select
 from sqlalchemy import cast as sql_cast
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from song_vault.models.song import Song, SongStatus
+from models.song import Song, SongStatus
 
 
 class SongNotFoundError(Exception):

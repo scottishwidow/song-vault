@@ -6,7 +6,7 @@ from enum import StrEnum
 from sqlalchemy import DateTime, Enum, ForeignKey, Integer, String, func
 from sqlalchemy.orm import Mapped, mapped_column
 
-from song_vault.db.base import Base
+from db.base import Base
 
 
 class SongChartStatus(StrEnum):

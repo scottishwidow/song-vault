@@ -5,11 +5,11 @@ from typing import Any
 
 import pytest
 
-from song_vault.models.song import Song, SongStatus
-from song_vault.models.song_chart import SongChart, SongChartStatus
-from song_vault.services.chart_service import ChartService, ChartUpload, SongChartNotFoundError
-from song_vault.services.song_service import SongNotFoundError
-from song_vault.storage.chart_storage import ChartStorageError, StoredChartBinary, StoredChartObject
+from models.song import Song, SongStatus
+from models.song_chart import SongChart, SongChartStatus
+from services.chart_service import ChartService, ChartUpload, SongChartNotFoundError
+from services.song_service import SongNotFoundError
+from storage.chart_storage import ChartStorageError, StoredChartBinary, StoredChartObject
 
 
 class FakeChartStorage:

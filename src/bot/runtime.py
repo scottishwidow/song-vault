@@ -3,9 +3,9 @@ from typing import cast
 from sqlalchemy.ext.asyncio import AsyncEngine
 from telegram.ext import ContextTypes
 
-from song_vault.config.settings import Settings
-from song_vault.services.chart_service import ChartService
-from song_vault.services.song_service import SongService
+from config.settings import Settings
+from services.chart_service import ChartService
+from services.song_service import SongService
 
 ENGINE_KEY = "engine"
 SETTINGS_KEY = "settings"

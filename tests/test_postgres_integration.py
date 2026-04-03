@@ -13,9 +13,9 @@ from alembic.util.exc import CommandError
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
-from song_vault.db.session import build_session_factory, create_engine
-from song_vault.models.song import SongStatus
-from song_vault.services.song_service import SongCreate, SongService
+from db.session import build_session_factory, create_engine
+from models.song import SongStatus
+from services.song_service import SongCreate, SongService
 
 TEST_DATABASE_URL_ENV = "TEST_DATABASE_URL"
 PROJECT_ROOT = Path(__file__).resolve().parents[1]

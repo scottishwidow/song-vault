@@ -14,10 +14,10 @@ from telegram.ext import (
     filters,
 )
 
-from song_vault.bot.runtime import get_song_service
-from song_vault.handlers.common import ensure_admin
-from song_vault.models.song import Song
-from song_vault.services.song_service import (
+from bot.runtime import get_song_service
+from handlers.common import ensure_admin
+from models.song import Song
+from services.song_service import (
     SongCreate,
     SongNotFoundError,
     SongUpdate,

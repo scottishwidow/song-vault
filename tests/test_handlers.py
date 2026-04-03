@@ -4,11 +4,11 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from song_vault.bot.runtime import CHART_SERVICE_KEY, SETTINGS_KEY, SONG_SERVICE_KEY
-from song_vault.config.settings import Settings
-from song_vault.handlers.charts import chart_command, upload_chart_start
-from song_vault.handlers.common import ensure_admin
-from song_vault.handlers.repertoire import (
+from bot.runtime import CHART_SERVICE_KEY, SETTINGS_KEY, SONG_SERVICE_KEY
+from config.settings import Settings
+from handlers.charts import chart_command, upload_chart_start
+from handlers.common import ensure_admin
+from handlers.repertoire import (
     EDIT_FIELD,
     EDIT_FIELD_KEY,
     EDIT_SONG_ID_KEY,
@@ -20,9 +20,9 @@ from song_vault.handlers.repertoire import (
     list_songs_command,
     search_songs_command,
 )
-from song_vault.models.song import Song, SongStatus
-from song_vault.services.chart_service import SongChartNotFoundError
-from song_vault.services.song_service import SongNotFoundError
+from models.song import Song, SongStatus
+from services.chart_service import SongChartNotFoundError
+from services.song_service import SongNotFoundError
 
 
 def build_context(

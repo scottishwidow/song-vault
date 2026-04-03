@@ -2,9 +2,9 @@ import logging
 
 from telegram import Update
 
-from song_vault.bot.application import build_application
-from song_vault.config.settings import get_settings
-from song_vault.db.session import build_session_factory, create_engine
+from bot.application import build_application
+from config.settings import get_settings
+from db.session import build_session_factory, create_engine
 
 
 def configure_logging(level_name: str) -> None:

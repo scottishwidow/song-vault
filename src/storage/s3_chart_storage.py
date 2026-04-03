@@ -6,8 +6,8 @@ from aioboto3 import Session
 from botocore.config import Config
 from botocore.exceptions import BotoCoreError, ClientError
 
-from song_vault.config.settings import Settings
-from song_vault.storage.chart_storage import (
+from config.settings import Settings
+from storage.chart_storage import (
     ChartStorage,
     ChartStorageError,
     StoredChartBinary,

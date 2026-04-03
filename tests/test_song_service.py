@@ -1,7 +1,7 @@
 import pytest
 
-from song_vault.models.song import SongStatus
-from song_vault.services.song_service import SongCreate, SongNotFoundError, SongUpdate
+from models.song import SongStatus
+from services.song_service import SongCreate, SongNotFoundError, SongUpdate
 
 
 @pytest.mark.asyncio
