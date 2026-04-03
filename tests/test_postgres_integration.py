@@ -143,6 +143,9 @@ async def test_migrations_create_expected_schema(postgres_engine: AsyncEngine) -
         "status",
         "created_at",
         "updated_at",
+        "capo",
+        "time_signature",
+        "arrangement_notes",
     ]
     assert chart_columns == [
         "id",
@@ -174,9 +177,12 @@ async def test_song_service_persists_in_postgres(
             title="King of Kings",
             artist_or_source="Hillsong Worship",
             key="A",
+            capo=2,
+            time_signature="4/4",
             tempo_bpm=68,
             tags=["worship", "resurrection"],
             notes="Use a softer intro.",
+            arrangement_notes="Bridge builds dynamically.",
         )
     )
 
@@ -191,6 +197,9 @@ async def test_song_service_persists_in_postgres(
 
     search_results = await song_service.search_songs("resurrection")
     assert [song.id for song in search_results] == [created.id]
+    assert search_results[0].capo == 2
+    assert search_results[0].time_signature == "4/4"
+    assert search_results[0].arrangement_notes == "Bridge builds dynamically."
 
     archived = await song_service.archive_song(second.id)
     assert archived.status is SongStatus.ARCHIVED

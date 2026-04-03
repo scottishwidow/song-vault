@@ -26,9 +26,12 @@ class SongCreate:
     title: str
     artist_or_source: str
     key: str
+    capo: int | None = None
+    time_signature: str | None = None
     tempo_bpm: int | None = None
     tags: list[str] = field(default_factory=list)
     notes: str | None = None
+    arrangement_notes: str | None = None
 
 
 @dataclass(slots=True)
@@ -36,9 +39,12 @@ class SongUpdate:
     title: str | _MissingType = MISSING
     artist_or_source: str | _MissingType = MISSING
     key: str | _MissingType = MISSING
+    capo: int | None | _MissingType = MISSING
+    time_signature: str | None | _MissingType = MISSING
     tempo_bpm: int | None | _MissingType = MISSING
     tags: list[str] | _MissingType = MISSING
     notes: str | None | _MissingType = MISSING
+    arrangement_notes: str | None | _MissingType = MISSING
     status: SongStatus | _MissingType = MISSING
 
     def values(self) -> dict[str, object]:
@@ -47,9 +53,12 @@ class SongUpdate:
             "title",
             "artist_or_source",
             "key",
+            "capo",
+            "time_signature",
             "tempo_bpm",
             "tags",
             "notes",
+            "arrangement_notes",
             "status",
         ):
             value = getattr(self, field_name)
@@ -85,6 +94,14 @@ def _clean_optional(value: str | None) -> str | None:
         return None
     cleaned = value.strip()
     return cleaned or None
+
+
+def _clean_capo(capo: int | None) -> int | None:
+    if capo is None:
+        return None
+    if capo <= 0:
+        raise ValueError("Capo must be a positive integer.")
+    return capo
 
 
 class SongService:
@@ -128,9 +145,12 @@ class SongService:
             title=_clean_required(payload.title, "title"),
             artist_or_source=_clean_required(payload.artist_or_source, "artist_or_source"),
             key=_clean_required(payload.key, "key"),
+            capo=_clean_capo(payload.capo),
+            time_signature=_clean_optional(payload.time_signature),
             tempo_bpm=payload.tempo_bpm,
             tags=parse_tag_input(",".join(payload.tags)),
             notes=_clean_optional(payload.notes),
+            arrangement_notes=_clean_optional(payload.arrangement_notes),
             status=SongStatus.ACTIVE,
         )
 
@@ -154,8 +174,10 @@ class SongService:
                 value = raw_value
                 if field_name in {"title", "artist_or_source", "key"}:
                     value = _clean_required(cast(str, raw_value), field_name)
-                elif field_name == "notes":
+                elif field_name in {"notes", "time_signature", "arrangement_notes"}:
                     value = _clean_optional(cast(str | None, raw_value))
+                elif field_name == "capo":
+                    value = _clean_capo(cast(int | None, raw_value))
                 elif field_name == "tags":
                     value = parse_tag_input(",".join(cast(list[str], raw_value)))
                 setattr(song, field_name, value)

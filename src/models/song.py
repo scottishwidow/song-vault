@@ -21,9 +21,12 @@ class Song(Base):
     title: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
     artist_or_source: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
     key: Mapped[str] = mapped_column(String(32), nullable=False)
+    capo: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    time_signature: Mapped[str | None] = mapped_column(String(16), nullable=True)
     tempo_bpm: Mapped[int | None] = mapped_column(Integer, nullable=True)
     tags: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
     notes: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    arrangement_notes: Mapped[str | None] = mapped_column(String(1000), nullable=True)
     status: Mapped[SongStatus] = mapped_column(
         Enum(
             SongStatus,

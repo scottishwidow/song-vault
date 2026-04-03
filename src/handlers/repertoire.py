@@ -24,7 +24,17 @@ from services.song_service import (
     parse_tag_input,
 )
 
-ADD_TITLE, ADD_ARTIST, ADD_KEY, ADD_TEMPO, ADD_TAGS, ADD_NOTES = range(6)
+(
+    ADD_TITLE,
+    ADD_ARTIST,
+    ADD_KEY,
+    ADD_CAPO,
+    ADD_TIME_SIGNATURE,
+    ADD_TEMPO,
+    ADD_TAGS,
+    ADD_NOTES,
+    ADD_ARRANGEMENT_NOTES,
+) = range(9)
 EDIT_FIELD, EDIT_VALUE = range(2)
 RESULT_MESSAGE_CHAR_LIMIT = 3500
 
@@ -42,16 +52,22 @@ class EditFieldSpec:
 
 
 def format_song(song: Song) -> str:
+    capo_text = str(song.capo) if song.capo is not None else "-"
+    time_signature_text = song.time_signature or "-"
     tag_text = ", ".join(song.tags) if song.tags else "-"
     tempo_text = str(song.tempo_bpm) if song.tempo_bpm is not None else "-"
     notes_text = song.notes or "-"
+    arrangement_notes_text = song.arrangement_notes or "-"
     return (
         f"#{song.id} {song.title}\n"
         f"Source: {song.artist_or_source}\n"
         f"Key: {song.key}\n"
+        f"Capo: {capo_text}\n"
+        f"Time signature: {time_signature_text}\n"
         f"Tempo: {tempo_text}\n"
         f"Tags: {tag_text}\n"
         f"Notes: {notes_text}\n"
+        f"Arrangement notes: {arrangement_notes_text}\n"
         f"Status: {song.status.value}"
     )
 
@@ -224,6 +240,28 @@ def _parse_tempo_update(raw_value: str) -> SongUpdate:
         raise ValueError("Tempo must be a number or 'clear'.") from error
 
 
+def _parse_capo_update(raw_value: str) -> SongUpdate:
+    if raw_value.lower() == "clear":
+        return SongUpdate(capo=None)
+    if not raw_value:
+        raise ValueError("Capo must be a positive number or 'clear'.")
+    try:
+        capo = int(raw_value)
+    except ValueError as error:
+        raise ValueError("Capo must be a positive number or 'clear'.") from error
+    if capo <= 0:
+        raise ValueError("Capo must be a positive number or 'clear'.")
+    return SongUpdate(capo=capo)
+
+
+def _parse_time_signature_update(raw_value: str) -> SongUpdate:
+    if raw_value.lower() == "clear":
+        return SongUpdate(time_signature=None)
+    if not raw_value:
+        raise ValueError("Time signature must be text or 'clear'.")
+    return SongUpdate(time_signature=raw_value)
+
+
 def _parse_tags_update(raw_value: str) -> SongUpdate:
     if raw_value.lower() == "clear":
         return SongUpdate(tags=[])
@@ -243,6 +281,22 @@ def _parse_notes_update(raw_value: str) -> SongUpdate:
     return SongUpdate(notes=raw_value)
 
 
+def _parse_arrangement_notes_update(raw_value: str) -> SongUpdate:
+    if raw_value.lower() == "clear":
+        return SongUpdate(arrangement_notes=None)
+    if not raw_value:
+        raise ValueError("Arrangement notes must be text or 'clear'.")
+    return SongUpdate(arrangement_notes=raw_value)
+
+
+def _format_capo(song: Song) -> str:
+    return str(song.capo) if song.capo is not None else "-"
+
+
+def _format_time_signature(song: Song) -> str:
+    return song.time_signature or "-"
+
+
 def _format_tempo(song: Song) -> str:
     return str(song.tempo_bpm) if song.tempo_bpm is not None else "-"
 
@@ -253,6 +307,10 @@ def _format_tags(song: Song) -> str:
 
 def _format_notes(song: Song) -> str:
     return song.notes or "-"
+
+
+def _format_arrangement_notes(song: Song) -> str:
+    return song.arrangement_notes or "-"
 
 
 EDIT_FIELD_SPECS: dict[str, EditFieldSpec] = {
@@ -274,6 +332,18 @@ EDIT_FIELD_SPECS: dict[str, EditFieldSpec] = {
         format_current=lambda song: song.key,
         parse_input=_parse_key_update,
     ),
+    "capo": EditFieldSpec(
+        label="capo",
+        prompt="New capo? Use a positive number or 'clear'.",
+        format_current=_format_capo,
+        parse_input=_parse_capo_update,
+    ),
+    "time_signature": EditFieldSpec(
+        label="time signature",
+        prompt="New time signature? Use text or 'clear'.",
+        format_current=_format_time_signature,
+        parse_input=_parse_time_signature_update,
+    ),
     "tempo": EditFieldSpec(
         label="tempo",
         prompt="New tempo BPM? Use a number or 'clear'.",
@@ -291,6 +361,12 @@ EDIT_FIELD_SPECS: dict[str, EditFieldSpec] = {
         prompt="New notes? Use 'clear' for none.",
         format_current=_format_notes,
         parse_input=_parse_notes_update,
+    ),
+    "arrangement_notes": EditFieldSpec(
+        label="arrangement notes",
+        prompt="New arrangement notes? Use text or 'clear'.",
+        format_current=_format_arrangement_notes,
+        parse_input=_parse_arrangement_notes_update,
     ),
 }
 
@@ -460,6 +536,41 @@ async def add_song_key(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
     payload = _pending_song(context)
     payload["key"] = _message_text(update)
     if update.effective_message is not None:
+        await update.effective_message.reply_text("Capo? Send a positive number or 'skip'.")
+    return ADD_CAPO
+
+
+async def add_song_capo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    payload = _pending_song(context)
+    text = _message_text(update)
+    if text.lower() == "skip":
+        payload["capo"] = None
+    else:
+        try:
+            capo = int(text)
+        except ValueError:
+            if update.effective_message is not None:
+                await update.effective_message.reply_text(
+                    "Capo must be a positive number or 'skip'."
+                )
+            return ADD_CAPO
+        if capo <= 0:
+            if update.effective_message is not None:
+                await update.effective_message.reply_text(
+                    "Capo must be a positive number or 'skip'."
+                )
+            return ADD_CAPO
+        payload["capo"] = capo
+    if update.effective_message is not None:
+        await update.effective_message.reply_text("Time signature? Send text or 'skip'.")
+    return ADD_TIME_SIGNATURE
+
+
+async def add_song_time_signature(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    payload = _pending_song(context)
+    text = _message_text(update)
+    payload["time_signature"] = None if text.lower() == "skip" else text
+    if update.effective_message is not None:
         await update.effective_message.reply_text("Tempo BPM? Send a number or 'skip'.")
     return ADD_TEMPO
 
@@ -493,7 +604,16 @@ async def add_song_tags(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
 async def add_song_notes(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     payload = _pending_song(context)
     text = _message_text(update)
-    notes = None if text.lower() == "skip" else text
+    payload["notes"] = None if text.lower() == "skip" else text
+    if update.effective_message is not None:
+        await update.effective_message.reply_text("Arrangement notes? Send text or 'skip'.")
+    return ADD_ARRANGEMENT_NOTES
+
+
+async def add_song_arrangement_notes(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    payload = _pending_song(context)
+    text = _message_text(update)
+    arrangement_notes = None if text.lower() == "skip" else text
     service = get_song_service(context)
     try:
         song = await service.create_song(
@@ -501,9 +621,12 @@ async def add_song_notes(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
                 title=str(payload["title"]),
                 artist_or_source=str(payload["artist_or_source"]),
                 key=str(payload["key"]),
+                capo=cast(int | None, payload.get("capo")),
+                time_signature=cast(str | None, payload.get("time_signature")),
                 tempo_bpm=cast(int | None, payload.get("tempo_bpm")),
                 tags=cast(list[str], payload.get("tags", [])),
-                notes=notes,
+                notes=cast(str | None, payload.get("notes")),
+                arrangement_notes=arrangement_notes,
             )
         )
     except ValueError as error:
@@ -667,9 +790,12 @@ def build_add_song_handler() -> ConversationHandler:
             ADD_TITLE: [_text_step(add_song_title)],
             ADD_ARTIST: [_text_step(add_song_artist)],
             ADD_KEY: [_text_step(add_song_key)],
+            ADD_CAPO: [_text_step(add_song_capo)],
+            ADD_TIME_SIGNATURE: [_text_step(add_song_time_signature)],
             ADD_TEMPO: [_text_step(add_song_tempo)],
             ADD_TAGS: [_text_step(add_song_tags)],
             ADD_NOTES: [_text_step(add_song_notes)],
+            ADD_ARRANGEMENT_NOTES: [_text_step(add_song_arrangement_notes)],
         },
         fallbacks=_conversation_fallbacks(),
         name="add_song",

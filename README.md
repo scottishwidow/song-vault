@@ -6,8 +6,10 @@ Song Vault is a Python Telegram bot for repertoire management. It uses `python-t
 
 - Async Telegram bot skeleton with polling
 - Admin-only repertoire CRUD flow
+- Rich song metadata fields: capo, time signature, and arrangement notes
 - Admin-only chart upload flow with one active chart per song
 - Chart retrieval by song ID
+- Admin-only repertoire backup export/import (ZIP with chart binaries)
 - Postgres-backed persistence and Alembic migrations
 - Ruff, mypy, pytest, pre-commit, and GitHub Actions
 

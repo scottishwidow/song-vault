@@ -4,8 +4,14 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from bot.runtime import CHART_SERVICE_KEY, SETTINGS_KEY, SONG_SERVICE_KEY
+from bot.runtime import BACKUP_SERVICE_KEY, CHART_SERVICE_KEY, SETTINGS_KEY, SONG_SERVICE_KEY
 from config.settings import Settings
+from handlers.backup import (
+    IMPORT_BACKUP_UPLOAD,
+    export_backup_command,
+    import_backup_file,
+    import_backup_start,
+)
 from handlers.charts import chart_command, upload_chart_start
 from handlers.common import ensure_admin
 from handlers.repertoire import (
@@ -22,6 +28,7 @@ from handlers.repertoire import (
 )
 from models.song import Song, SongStatus
 from services.chart_service import SongChartNotFoundError
+from services.repertoire_backup_service import BackupArchive
 from services.song_service import SongNotFoundError
 
 
@@ -31,6 +38,7 @@ def build_context(
     admin_ids: tuple[int, ...] = (1,),
     chart_service: object | None = None,
     song_service: object | None = None,
+    backup_service: object | None = None,
 ) -> SimpleNamespace:
     settings = Settings(
         TELEGRAM_BOT_TOKEN="token",
@@ -45,6 +53,7 @@ def build_context(
                 SETTINGS_KEY: settings,
                 CHART_SERVICE_KEY: chart_service,
                 SONG_SERVICE_KEY: song_service,
+                BACKUP_SERVICE_KEY: backup_service,
             }
         ),
     )
@@ -52,7 +61,13 @@ def build_context(
 
 def build_update(*, user_id: int = 1) -> tuple[SimpleNamespace, AsyncMock]:
     reply = AsyncMock()
-    message = SimpleNamespace(reply_text=reply, text=None)
+    reply_document = AsyncMock()
+    message = SimpleNamespace(
+        reply_text=reply,
+        reply_document=reply_document,
+        text=None,
+        document=None,
+    )
     update = SimpleNamespace(
         effective_user=SimpleNamespace(id=user_id),
         effective_message=message,
@@ -66,17 +81,23 @@ def build_song(
     title: str = "Amazing Grace",
     artist_or_source: str = "Traditional",
     key: str = "G",
+    capo: int | None = 1,
+    time_signature: str | None = "3/4",
     tempo_bpm: int | None = 72,
     tags: list[str] | None = None,
     notes: str | None = "Slow intro.",
+    arrangement_notes: str | None = "Lift dynamics in verse two.",
 ) -> Song:
     song = Song(
         title=title,
         artist_or_source=artist_or_source,
         key=key,
+        capo=capo,
+        time_signature=time_signature,
         tempo_bpm=tempo_bpm,
         tags=tags or ["hymn", "classic"],
         notes=notes,
+        arrangement_notes=arrangement_notes,
         status=SongStatus.ACTIVE,
     )
     song.id = song_id
@@ -131,6 +152,9 @@ async def test_list_songs_command_sends_detailed_song_cards_when_result_fits() -
     message = reply.await_args.args[0]
     assert "Source: Traditional" in message
     assert "Notes: Slow intro." in message
+    assert "Capo: 1" in message
+    assert "Time signature: 3/4" in message
+    assert "Arrangement notes: Lift dynamics in verse two." in message
     assert not message.startswith("Active songs (")
 
 
@@ -147,6 +171,8 @@ async def test_search_command_sends_detailed_song_cards_when_result_fits() -> No
     message = reply.await_args.args[0]
     assert "Source: Traditional" in message
     assert "Notes: Slow intro." in message
+    assert "Capo: 1" in message
+    assert "Time signature: 3/4" in message
     assert not message.startswith('Matches for "grace" (')
 
 
@@ -286,9 +312,12 @@ async def test_edit_song_start_shows_editable_field_previews() -> None:
     assert "Current editable fields:" in message
     assert "title: Amazing Grace" in message
     assert "artist: Traditional" in message
+    assert "capo: 1" in message
+    assert "time_signature: 3/4" in message
     assert "tempo: 72" in message
     assert "tags: hymn, classic" in message
     assert "notes: Slow intro." in message
+    assert "arrangement_notes: Lift dynamics in verse two." in message
 
 
 @pytest.mark.asyncio
@@ -318,7 +347,8 @@ async def test_edit_song_field_rejects_unknown_field() -> None:
 
     assert state == EDIT_FIELD
     reply.assert_awaited_once_with(
-        "Invalid field. Choose one of: title, artist, key, tempo, tags, notes."
+        "Invalid field. Choose one of: title, artist, key, capo, "
+        "time_signature, tempo, tags, notes, arrangement_notes."
     )
 
 
@@ -370,8 +400,10 @@ async def test_edit_song_value_retries_on_blank_required_text() -> None:
 @pytest.mark.parametrize(
     ("field_name", "expected_error"),
     [
+        ("time_signature", "Time signature must be text or 'clear'."),
         ("tags", "Tags must be comma-separated values or 'clear'."),
         ("notes", "Notes must be text or 'clear'."),
+        ("arrangement_notes", "Arrangement notes must be text or 'clear'."),
     ],
 )
 async def test_edit_song_value_retries_on_blank_optional_field_input(
@@ -417,3 +449,90 @@ async def test_edit_song_value_updates_song_and_clears_state() -> None:
     update_payload = song_service.update_song.await_args.args[1]
     assert update_payload.values() == {"title": "Amazing Grace (Acoustic)"}
     assert "Updated song:" in reply.await_args.args[0]
+
+
+@pytest.mark.asyncio
+async def test_export_backup_command_requires_admin() -> None:
+    update, reply = build_update(user_id=2)
+    backup_service = SimpleNamespace(export_backup=AsyncMock())
+    context = build_context(admin_ids=(1,), backup_service=backup_service)
+
+    await export_backup_command(update, context)
+
+    reply.assert_awaited_once_with("Admin access is required for this command.")
+    backup_service.export_backup.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_export_backup_command_sends_archive_document() -> None:
+    update, _ = build_update()
+    backup_service = SimpleNamespace(
+        export_backup=AsyncMock(
+            return_value=BackupArchive(
+                filename="backup.zip",
+                content=b"zip-data",
+                song_count=2,
+                chart_count=1,
+            )
+        )
+    )
+    context = build_context(backup_service=backup_service)
+
+    await export_backup_command(update, context)
+
+    update.effective_message.reply_document.assert_awaited_once()
+    args = update.effective_message.reply_document.await_args.kwargs
+    sent_file = args["document"]
+    assert sent_file.filename == "backup.zip"
+    assert sent_file.input_file_content == b"zip-data"
+    assert "Songs: 2" in args["caption"]
+    assert "Charts: 1" in args["caption"]
+
+
+@pytest.mark.asyncio
+async def test_import_backup_start_prompts_for_zip_file() -> None:
+    update, reply = build_update()
+    context = build_context()
+
+    state = await import_backup_start(update, context)
+
+    assert state == IMPORT_BACKUP_UPLOAD
+    reply.assert_awaited_once_with("Send a .zip backup file to import, or /cancel.")
+
+
+@pytest.mark.asyncio
+async def test_import_backup_file_rejects_non_zip_document() -> None:
+    update, reply = build_update()
+    update.effective_message.document = SimpleNamespace(
+        file_name="backup.txt",
+        mime_type="text/plain",
+    )
+    context = build_context()
+
+    state = await import_backup_file(update, context)
+
+    assert state == IMPORT_BACKUP_UPLOAD
+    reply.assert_awaited_once_with("Backup import expects a .zip document file.")
+
+
+@pytest.mark.asyncio
+async def test_import_backup_file_runs_restore_and_reports_success() -> None:
+    update, reply = build_update()
+    telegram_file = SimpleNamespace(download_as_bytearray=AsyncMock(return_value=bytearray(b"zip")))
+    update.effective_message.document = SimpleNamespace(
+        file_name="backup.zip",
+        mime_type="application/zip",
+        get_file=AsyncMock(return_value=telegram_file),
+    )
+    backup_service = SimpleNamespace(
+        import_backup=AsyncMock(return_value=SimpleNamespace(song_count=3, chart_count=2))
+    )
+    context = build_context(backup_service=backup_service)
+
+    state = await import_backup_file(update, context)
+
+    assert state == -1
+    backup_service.import_backup.assert_awaited_once_with(b"zip")
+    message = reply.await_args.args[0]
+    assert "Songs restored: 3" in message
+    assert "Charts restored: 2" in message

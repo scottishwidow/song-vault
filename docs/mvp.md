@@ -11,10 +11,12 @@ The first usable version is an admin-operated repertoire bot.
 - Guided edit-song flow
 - Soft-archive command
 - Tag listing
+- Rich song metadata fields (capo, time signature, arrangement notes)
 - One current chart image per song, managed by admins
 - Admin-only chart upload command
 - Song chart retrieval command for all users
 - S3-compatible chart storage for local/dev via MinIO
+- Admin-only repertoire backup export/import (ZIP with songs + charts)
 
 ## Chart handling
 
@@ -49,5 +51,5 @@ Charts are part of the MVP as admin-managed image attachments.
 - [x] Improve guided edit flows with field previews and validation feedback
 - [x] Add pagination or compact summaries for long `/songs` and `/search` results
 - [x] Add chart attachment storage, metadata persistence, and admin commands
-- [ ] Support richer song metadata such as capo, time signature, and arrangement notes
-- [ ] Add import/export support for repertoire backups
+- [x] Support richer song metadata such as capo, time signature, and arrangement notes
+- [x] Add import/export support for repertoire backups

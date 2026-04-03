@@ -3,6 +3,7 @@ from config.settings import Settings
 
 def test_admin_telegram_user_ids_accepts_single_int() -> None:
     settings = Settings(
+        _env_file=None,
         TELEGRAM_BOT_TOKEN="token",
         ADMIN_TELEGRAM_USER_IDS=1,
         DATABASE_URL="sqlite+aiosqlite:///:memory:",
@@ -13,6 +14,7 @@ def test_admin_telegram_user_ids_accepts_single_int() -> None:
 
 def test_admin_telegram_user_ids_accepts_csv_string() -> None:
     settings = Settings(
+        _env_file=None,
         TELEGRAM_BOT_TOKEN="token",
         ADMIN_TELEGRAM_USER_IDS="1, 2,3",
         DATABASE_URL="sqlite+aiosqlite:///:memory:",
@@ -23,6 +25,7 @@ def test_admin_telegram_user_ids_accepts_csv_string() -> None:
 
 def test_chart_storage_defaults_are_set() -> None:
     settings = Settings(
+        _env_file=None,
         TELEGRAM_BOT_TOKEN="token",
         DATABASE_URL="sqlite+aiosqlite:///:memory:",
     )
@@ -38,6 +41,7 @@ def test_chart_storage_defaults_are_set() -> None:
 
 def test_chart_storage_settings_parse_overrides() -> None:
     settings = Settings(
+        _env_file=None,
         TELEGRAM_BOT_TOKEN="token",
         DATABASE_URL="sqlite+aiosqlite:///:memory:",
         CHART_STORAGE_ENDPOINT_URL="https://object-store.example.com",
