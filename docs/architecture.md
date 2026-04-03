@@ -7,9 +7,9 @@ The application runs as a long-polling Telegram bot. Telegram updates enter thro
 1. `app` loads settings, logging, and database engine configuration.
 2. `bot.application` builds the Telegram application and registers handlers.
 3. On startup, `ChartService` verifies the chart storage bucket is reachable.
-4. Handlers authorize the caller, validate command input, and call `SongService` or `ChartService`.
-5. `SongService` and `ChartService` read or write Postgres metadata rows.
-6. `ChartService` stores and retrieves chart binaries through the storage adapter.
+4. Handlers authorize the caller, validate command input, and call `SongService`, `ChartService`, or `RepertoireBackupService`.
+5. Service-layer components read or write Postgres metadata rows.
+6. `ChartService` and `RepertoireBackupService` store and retrieve chart binaries through the storage adapter.
 7. Responses are formatted back into Telegram messages.
 
 ## Boundaries

@@ -5,12 +5,14 @@ from telegram.ext import ContextTypes
 
 from config.settings import Settings
 from services.chart_service import ChartService
+from services.repertoire_backup_service import RepertoireBackupService
 from services.song_service import SongService
 
 ENGINE_KEY = "engine"
 SETTINGS_KEY = "settings"
 SONG_SERVICE_KEY = "song_service"
 CHART_SERVICE_KEY = "chart_service"
+BACKUP_SERVICE_KEY = "backup_service"
 
 
 def get_settings(context: ContextTypes.DEFAULT_TYPE) -> Settings:
@@ -23,6 +25,10 @@ def get_song_service(context: ContextTypes.DEFAULT_TYPE) -> SongService:
 
 def get_chart_service(context: ContextTypes.DEFAULT_TYPE) -> ChartService:
     return cast(ChartService, context.application.bot_data[CHART_SERVICE_KEY])
+
+
+def get_backup_service(context: ContextTypes.DEFAULT_TYPE) -> RepertoireBackupService:
+    return cast(RepertoireBackupService, context.application.bot_data[BACKUP_SERVICE_KEY])
 
 
 def get_engine(context: ContextTypes.DEFAULT_TYPE) -> AsyncEngine:

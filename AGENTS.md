@@ -19,6 +19,7 @@ This repository hosts a Telegram bot for repertoire management. Keep the baselin
 ## Preferred workflow
 
 - Use `uv` for dependency management and command execution.
+- Use Docker Compose when running the local stack (database, object storage, bot).
 - Keep Telegram handlers thin. Business logic belongs in `services/`.
 - Treat Postgres as the primary database. Test-only SQLite usage is acceptable when it does not leak into runtime code.
 - Prefer explicit typing and pass `ruff`, `mypy`, and `pytest` before finalizing changes.
@@ -37,6 +38,8 @@ This repository hosts a Telegram bot for repertoire management. Keep the baselin
 uv sync --dev
 uv run alembic upgrade head
 uv run song-vault
+docker compose up -d --build
+docker compose logs -f bot
 uv run pytest
 uv run ruff check .
 uv run ruff format --check .

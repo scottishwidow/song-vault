@@ -11,9 +11,12 @@ async def test_song_service_create_list_search_update_and_archive(song_service) 
             title="Cornerstone",
             artist_or_source="Hillsong",
             key="C",
+            capo=3,
+            time_signature="6/8",
             tempo_bpm=72,
             tags=["worship", "opening"],
             notes="Keep intro short.",
+            arrangement_notes="Start with piano only.",
         )
     )
 
@@ -27,13 +30,19 @@ async def test_song_service_create_list_search_update_and_archive(song_service) 
         created.id,
         SongUpdate(
             title="Cornerstone (Acoustic)",
+            capo=None,
+            time_signature="4/4",
             tempo_bpm=None,
             tags=["worship", "acoustic"],
+            arrangement_notes="Strip back verse one.",
         ),
     )
     assert updated.title == "Cornerstone (Acoustic)"
+    assert updated.capo is None
+    assert updated.time_signature == "4/4"
     assert updated.tempo_bpm is None
     assert updated.tags == ["worship", "acoustic"]
+    assert updated.arrangement_notes == "Strip back verse one."
 
     archived = await song_service.archive_song(created.id)
     assert archived.status is SongStatus.ARCHIVED
