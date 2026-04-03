@@ -26,6 +26,7 @@ from song_vault.services.song_service import (
 
 ADD_TITLE, ADD_ARTIST, ADD_KEY, ADD_TEMPO, ADD_TAGS, ADD_NOTES = range(6)
 EDIT_FIELD, EDIT_VALUE = range(2)
+RESULT_MESSAGE_CHAR_LIMIT = 3500
 
 PENDING_SONG_KEY = "pending_song"
 EDIT_SONG_ID_KEY = "edit_song_id"
@@ -53,6 +54,117 @@ def format_song(song: Song) -> str:
         f"Notes: {notes_text}\n"
         f"Status: {song.status.value}"
     )
+
+
+def format_compact_song(song: Song) -> str:
+    return f"#{song.id} {song.title} | {song.artist_or_source} | Key: {song.key}"
+
+
+def _truncate_text(value: str, limit: int) -> str:
+    if limit <= 0:
+        return ""
+    if len(value) <= limit:
+        return value
+    if limit <= 3:
+        return value[:limit]
+    return value[: limit - 3] + "..."
+
+
+def _continuation_header(base_header: str, chunk_number: int, total_chunks: int) -> str:
+    return f"{base_header} (cont. {chunk_number}/{total_chunks}):"
+
+
+def _chunk_compact_lines(
+    lines: list[str],
+    *,
+    first_header: str,
+    continuation_header_base: str,
+    total_chunks: int,
+) -> list[list[str]]:
+    chunks: list[list[str]] = []
+    current_lines: list[str] = []
+    chunk_number = 1
+
+    for raw_line in lines:
+        header = (
+            first_header
+            if chunk_number == 1
+            else _continuation_header(continuation_header_base, chunk_number, total_chunks)
+        )
+        line = _truncate_text(raw_line, RESULT_MESSAGE_CHAR_LIMIT - len(header) - 1)
+        candidate_lines = [*current_lines, line]
+        candidate_body = "\n".join(candidate_lines)
+        candidate_message = f"{header}\n{candidate_body}"
+        if len(candidate_message) <= RESULT_MESSAGE_CHAR_LIMIT:
+            current_lines = candidate_lines
+            continue
+
+        if current_lines:
+            chunks.append(current_lines)
+            chunk_number += 1
+            current_lines = [line]
+            continue
+
+        current_lines = [line]
+
+    if current_lines:
+        chunks.append(current_lines)
+    return chunks
+
+
+def _build_compact_messages(
+    lines: list[str],
+    *,
+    first_header: str,
+    continuation_header_base: str,
+) -> list[str]:
+    total_chunks = 1
+    while True:
+        chunks = _chunk_compact_lines(
+            lines,
+            first_header=first_header,
+            continuation_header_base=continuation_header_base,
+            total_chunks=total_chunks,
+        )
+        if len(chunks) == total_chunks:
+            break
+        total_chunks = len(chunks)
+
+    messages: list[str] = []
+    for chunk_number, chunk_lines in enumerate(chunks, start=1):
+        header = (
+            first_header
+            if chunk_number == 1
+            else _continuation_header(continuation_header_base, chunk_number, total_chunks)
+        )
+        messages.append(f"{header}\n" + "\n".join(chunk_lines))
+    return messages
+
+
+async def _reply_song_results(
+    update: Update,
+    songs: list[Song],
+    *,
+    first_header: str,
+    continuation_header_base: str,
+) -> None:
+    message = update.effective_message
+    if message is None:
+        return
+
+    detailed_body = "\n\n".join(format_song(song) for song in songs)
+    if len(detailed_body) <= RESULT_MESSAGE_CHAR_LIMIT:
+        await message.reply_text(detailed_body)
+        return
+
+    compact_lines = [format_compact_song(song) for song in songs]
+    compact_messages = _build_compact_messages(
+        compact_lines,
+        first_header=first_header,
+        continuation_header_base=continuation_header_base,
+    )
+    for compact_message in compact_messages:
+        await message.reply_text(compact_message)
 
 
 def _message_text(update: Update) -> str:
@@ -237,8 +349,14 @@ async def list_songs_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
     if not songs:
         await update.effective_message.reply_text("No active songs yet.")
         return
-    body = "\n\n".join(format_song(song) for song in songs)
-    await update.effective_message.reply_text(body)
+    count = len(songs)
+    base_header = f"Active songs ({count})"
+    await _reply_song_results(
+        update,
+        songs,
+        first_header=base_header + ":",
+        continuation_header_base=base_header,
+    )
 
 
 async def search_songs_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -255,8 +373,14 @@ async def search_songs_command(update: Update, context: ContextTypes.DEFAULT_TYP
         await update.effective_message.reply_text("No matching songs found.")
         return
 
-    body = "\n\n".join(format_song(song) for song in songs)
-    await update.effective_message.reply_text(body)
+    count = len(songs)
+    base_header = f'Matches for "{query}" ({count})'
+    await _reply_song_results(
+        update,
+        songs,
+        first_header=base_header + ":",
+        continuation_header_base=base_header,
+    )
 
 
 async def tags_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
