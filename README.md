@@ -2,6 +2,8 @@
 
 Song Vault is a Python Telegram bot for repertoire management. It uses `python-telegram-bot`, `uv`, SQLAlchemy, Alembic, Postgres, and S3-compatible chart storage (MinIO in local development).
 
+The MVP is complete. The current repository baseline is the finished admin-operated repertoire bot plus documentation for follow-on feature planning in `docs/features/`.
+
 ## What it includes
 
 - Async Telegram bot skeleton with polling
@@ -12,6 +14,12 @@ Song Vault is a Python Telegram bot for repertoire management. It uses `python-t
 - Admin-only repertoire backup export/import (ZIP with chart binaries)
 - Postgres-backed persistence and Alembic migrations
 - Ruff, mypy, pytest, pre-commit, and GitHub Actions
+
+## Documentation
+
+- [Architecture](docs/architecture.md)
+- [MVP scope](docs/mvp.md)
+- [Feature implementation plans](docs/features/README.md)
 
 ## Quick start
 
