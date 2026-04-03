@@ -46,7 +46,7 @@ Charts are part of the MVP as admin-managed image attachments.
 - [x] Define the initial song data model and migration flow
 - [x] Implement admin-only repertoire CRUD command flows
 - [x] Add Postgres-backed integration tests for migrations and persistence
-- [ ] Improve guided edit flows with field previews and validation feedback
+- [x] Improve guided edit flows with field previews and validation feedback
 - [ ] Add pagination or compact summaries for long `/songs` and `/search` results
 - [x] Add chart attachment storage, metadata persistence, and admin commands
 - [ ] Support richer song metadata such as capo, time signature, and arrangement notes
