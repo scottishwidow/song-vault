@@ -4,6 +4,7 @@ from telegram import Update
 from telegram.ext import ContextTypes
 
 from bot.runtime import get_settings
+from handlers.ui import home_menu_markup
 
 logger = logging.getLogger(__name__)
 
@@ -11,17 +12,13 @@ logger = logging.getLogger(__name__)
 def help_text() -> str:
     return "\n".join(
         [
-            "Song Vault commands:",
-            "/songs - list active songs",
-            "/search <text> - search by title, source, or tag",
-            "/addsong - guided song creation",
-            "/editsong <id> - guided song update",
-            "/archivesong <id> - archive a song",
-            "/tags - list known tags",
-            "/uploadchart <song_id> - upload or replace a chart image (admin only)",
-            "/chart <song_id> - fetch the current chart image",
-            "/exportbackup - export repertoire backup (admin only)",
-            "/importbackup - import repertoire backup (admin only)",
+            "Song Vault menu:",
+            "Use the on-screen buttons for day-to-day navigation.",
+            "Tap Start anytime to return to the main menu.",
+            "",
+            "In private chats, /start also reopens the menu if needed.",
+            "",
+            "Admin actions remain available from the lower menu rows.",
         ]
     )
 
@@ -31,23 +28,37 @@ async def ensure_admin(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bo
     user = update.effective_user
     if user is None or user.id not in settings.admin_telegram_user_ids:
         if update.effective_message is not None:
-            await update.effective_message.reply_text("Admin access is required for this command.")
+            await update.effective_message.reply_text("Admin access is required for this action.")
         return False
     return True
 
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    del context
+    await send_home_screen(update, context)
+
+
+async def send_home_screen(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    *,
+    prefix: str | None = None,
+) -> None:
     if update.effective_message is not None:
+        lines = ["Song Vault is ready.", "Use the menu buttons below."]
+        if prefix:
+            lines.insert(0, prefix)
         await update.effective_message.reply_text(
-            "Song Vault is ready.\nUse /help to view repertoire commands."
+            "\n".join(lines),
+            reply_markup=home_menu_markup(update, context),
         )
 
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    del context
     if update.effective_message is not None:
-        await update.effective_message.reply_text(help_text())
+        await update.effective_message.reply_text(
+            help_text(),
+            reply_markup=home_menu_markup(update, context),
+        )
 
 
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
