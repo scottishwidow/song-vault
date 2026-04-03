@@ -13,9 +13,11 @@ from song_vault.handlers.repertoire import (
     EDIT_FIELD_KEY,
     EDIT_SONG_ID_KEY,
     EDIT_VALUE,
+    RESULT_MESSAGE_CHAR_LIMIT,
     edit_song_field,
     edit_song_start,
     edit_song_value,
+    list_songs_command,
     search_songs_command,
 )
 from song_vault.models.song import Song, SongStatus
@@ -103,6 +105,109 @@ async def test_search_command_requires_query() -> None:
     await search_songs_command(update, context)
 
     reply.assert_awaited_once_with("Usage: /search <text>")
+
+
+@pytest.mark.asyncio
+async def test_list_songs_command_reports_empty_repertoire() -> None:
+    update, reply = build_update()
+    song_service = SimpleNamespace(list_songs=AsyncMock(return_value=[]))
+    context = build_context(song_service=song_service)
+
+    await list_songs_command(update, context)
+
+    reply.assert_awaited_once_with("No active songs yet.")
+
+
+@pytest.mark.asyncio
+async def test_list_songs_command_sends_detailed_song_cards_when_result_fits() -> None:
+    update, reply = build_update()
+    song = build_song()
+    song_service = SimpleNamespace(list_songs=AsyncMock(return_value=[song]))
+    context = build_context(song_service=song_service)
+
+    await list_songs_command(update, context)
+
+    reply.assert_awaited_once()
+    message = reply.await_args.args[0]
+    assert "Source: Traditional" in message
+    assert "Notes: Slow intro." in message
+    assert not message.startswith("Active songs (")
+
+
+@pytest.mark.asyncio
+async def test_search_command_sends_detailed_song_cards_when_result_fits() -> None:
+    update, reply = build_update()
+    song = build_song()
+    song_service = SimpleNamespace(search_songs=AsyncMock(return_value=[song]))
+    context = build_context(args=["grace"], song_service=song_service)
+
+    await search_songs_command(update, context)
+
+    reply.assert_awaited_once()
+    message = reply.await_args.args[0]
+    assert "Source: Traditional" in message
+    assert "Notes: Slow intro." in message
+    assert not message.startswith('Matches for "grace" (')
+
+
+@pytest.mark.asyncio
+async def test_list_songs_command_falls_back_to_compact_summary_when_output_is_long() -> None:
+    update, reply = build_update()
+    song = build_song(notes="x" * (RESULT_MESSAGE_CHAR_LIMIT + 100))
+    song_service = SimpleNamespace(list_songs=AsyncMock(return_value=[song]))
+    context = build_context(song_service=song_service)
+
+    await list_songs_command(update, context)
+
+    reply.assert_awaited_once()
+    message = reply.await_args.args[0]
+    assert message.startswith("Active songs (1):")
+    assert "#5 Amazing Grace | Traditional | Key: G" in message
+    assert "Notes:" not in message
+    assert len(message) <= RESULT_MESSAGE_CHAR_LIMIT
+
+
+@pytest.mark.asyncio
+async def test_search_command_falls_back_to_compact_summary_when_output_is_long() -> None:
+    update, reply = build_update()
+    song = build_song(notes="x" * (RESULT_MESSAGE_CHAR_LIMIT + 100))
+    song_service = SimpleNamespace(search_songs=AsyncMock(return_value=[song]))
+    context = build_context(args=["grace"], song_service=song_service)
+
+    await search_songs_command(update, context)
+
+    reply.assert_awaited_once()
+    message = reply.await_args.args[0]
+    assert message.startswith('Matches for "grace" (1):')
+    assert "#5 Amazing Grace | Traditional | Key: G" in message
+    assert "Notes:" not in message
+    assert len(message) <= RESULT_MESSAGE_CHAR_LIMIT
+
+
+@pytest.mark.asyncio
+async def test_search_command_splits_compact_summary_across_multiple_messages() -> None:
+    update, reply = build_update()
+    songs = [
+        build_song(
+            song_id=index,
+            title=f"Song {index}",
+            artist_or_source=f"Source {index}",
+            key="C",
+            notes="ok",
+        )
+        for index in range(1, 221)
+    ]
+    song_service = SimpleNamespace(search_songs=AsyncMock(return_value=songs))
+    context = build_context(args=["setlist"], song_service=song_service)
+
+    await search_songs_command(update, context)
+
+    assert reply.await_count > 1
+    messages = [call.args[0] for call in reply.await_args_list]
+    assert messages[0].startswith('Matches for "setlist" (220):')
+    assert messages[1].startswith(f'Matches for "setlist" (220) (cont. 2/{len(messages)}):')
+    assert "#1 Song 1 | Source 1 | Key: C" in messages[0]
+    assert all(len(message) <= RESULT_MESSAGE_CHAR_LIMIT for message in messages)
 
 
 @pytest.mark.asyncio
