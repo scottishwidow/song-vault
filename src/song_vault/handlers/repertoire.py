@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Coroutine
+from dataclasses import dataclass
 from typing import Any, cast
 
 from telegram import ReplyKeyboardRemove, Update
@@ -29,7 +30,14 @@ EDIT_FIELD, EDIT_VALUE = range(2)
 PENDING_SONG_KEY = "pending_song"
 EDIT_SONG_ID_KEY = "edit_song_id"
 EDIT_FIELD_KEY = "edit_field"
-EDITABLE_FIELDS = {"title", "artist", "key", "tempo", "tags", "notes"}
+
+
+@dataclass(frozen=True, slots=True)
+class EditFieldSpec:
+    label: str
+    prompt: str
+    format_current: Callable[[Song], str]
+    parse_input: Callable[[str], SongUpdate]
 
 
 def format_song(song: Song) -> str:
@@ -56,6 +64,169 @@ def _message_text(update: Update) -> str:
 
 def _user_state(context: ContextTypes.DEFAULT_TYPE) -> dict[str, object]:
     return cast(dict[str, object], context.user_data)
+
+
+def _parse_required_text(
+    raw_value: str,
+    *,
+    label: str,
+    build_update: Callable[[str], SongUpdate],
+) -> SongUpdate:
+    if not raw_value:
+        raise ValueError(f"{label} cannot be empty. Send a non-empty value.")
+    return build_update(raw_value)
+
+
+def _parse_title_update(raw_value: str) -> SongUpdate:
+    return _parse_required_text(
+        raw_value,
+        label="Title",
+        build_update=lambda value: SongUpdate(title=value),
+    )
+
+
+def _parse_artist_update(raw_value: str) -> SongUpdate:
+    return _parse_required_text(
+        raw_value,
+        label="Artist or source",
+        build_update=lambda value: SongUpdate(artist_or_source=value),
+    )
+
+
+def _parse_key_update(raw_value: str) -> SongUpdate:
+    return _parse_required_text(
+        raw_value,
+        label="Key",
+        build_update=lambda value: SongUpdate(key=value),
+    )
+
+
+def _parse_tempo_update(raw_value: str) -> SongUpdate:
+    if raw_value.lower() == "clear":
+        return SongUpdate(tempo_bpm=None)
+    if not raw_value:
+        raise ValueError("Tempo must be a number or 'clear'.")
+    try:
+        return SongUpdate(tempo_bpm=int(raw_value))
+    except ValueError as error:
+        raise ValueError("Tempo must be a number or 'clear'.") from error
+
+
+def _parse_tags_update(raw_value: str) -> SongUpdate:
+    if raw_value.lower() == "clear":
+        return SongUpdate(tags=[])
+    if not raw_value:
+        raise ValueError("Tags must be comma-separated values or 'clear'.")
+    tags = parse_tag_input(raw_value)
+    if not tags:
+        raise ValueError("Tags must be comma-separated values or 'clear'.")
+    return SongUpdate(tags=tags)
+
+
+def _parse_notes_update(raw_value: str) -> SongUpdate:
+    if raw_value.lower() == "clear":
+        return SongUpdate(notes=None)
+    if not raw_value:
+        raise ValueError("Notes must be text or 'clear'.")
+    return SongUpdate(notes=raw_value)
+
+
+def _format_tempo(song: Song) -> str:
+    return str(song.tempo_bpm) if song.tempo_bpm is not None else "-"
+
+
+def _format_tags(song: Song) -> str:
+    return ", ".join(song.tags) if song.tags else "-"
+
+
+def _format_notes(song: Song) -> str:
+    return song.notes or "-"
+
+
+EDIT_FIELD_SPECS: dict[str, EditFieldSpec] = {
+    "title": EditFieldSpec(
+        label="title",
+        prompt="New title?",
+        format_current=lambda song: song.title,
+        parse_input=_parse_title_update,
+    ),
+    "artist": EditFieldSpec(
+        label="artist",
+        prompt="New artist or source?",
+        format_current=lambda song: song.artist_or_source,
+        parse_input=_parse_artist_update,
+    ),
+    "key": EditFieldSpec(
+        label="key",
+        prompt="New key?",
+        format_current=lambda song: song.key,
+        parse_input=_parse_key_update,
+    ),
+    "tempo": EditFieldSpec(
+        label="tempo",
+        prompt="New tempo BPM? Use a number or 'clear'.",
+        format_current=_format_tempo,
+        parse_input=_parse_tempo_update,
+    ),
+    "tags": EditFieldSpec(
+        label="tags",
+        prompt="New comma-separated tags? Use 'clear' for none.",
+        format_current=_format_tags,
+        parse_input=_parse_tags_update,
+    ),
+    "notes": EditFieldSpec(
+        label="notes",
+        prompt="New notes? Use 'clear' for none.",
+        format_current=_format_notes,
+        parse_input=_parse_notes_update,
+    ),
+}
+
+
+def _editable_field_list() -> str:
+    return ", ".join(EDIT_FIELD_SPECS)
+
+
+def _edit_field_previews(song: Song) -> str:
+    return "\n".join(
+        f"{field_name}: {spec.format_current(song)}"
+        for field_name, spec in EDIT_FIELD_SPECS.items()
+    )
+
+
+def _edit_value_prompt(song: Song, field_name: str) -> str:
+    spec = EDIT_FIELD_SPECS[field_name]
+    return f"{spec.prompt}\nCurrent {spec.label}: {spec.format_current(song)}"
+
+
+async def _reply_with_edit_value_prompt(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    *,
+    song_id: int,
+    field_name: str,
+    error_message: str | None = None,
+) -> int:
+    if update.effective_message is None:
+        return ConversationHandler.END
+    if field_name not in EDIT_FIELD_SPECS:
+        await update.effective_message.reply_text(
+            "Edit state was lost. Start again with /editsong <id>."
+        )
+        return ConversationHandler.END
+
+    service = get_song_service(context)
+    try:
+        song = await service.get_song(song_id)
+    except SongNotFoundError as error:
+        await update.effective_message.reply_text(str(error))
+        return ConversationHandler.END
+
+    prompt = _edit_value_prompt(song, field_name)
+    if error_message:
+        prompt = f"{error_message}\n{prompt}"
+    await update.effective_message.reply_text(prompt)
+    return EDIT_VALUE
 
 
 async def list_songs_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -247,7 +418,11 @@ async def edit_song_start(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     await update.effective_message.reply_text(
         "Editing song:\n"
         + format_song(song)
-        + "\n\nWhich field? Choose one of: title, artist, key, tempo, tags, notes."
+        + "\n\nCurrent editable fields:\n"
+        + _edit_field_previews(song)
+        + "\n\nWhich field? Choose one of: "
+        + _editable_field_list()
+        + ".\nUse /cancel to stop."
     )
     return EDIT_FIELD
 
@@ -256,23 +431,27 @@ async def edit_song_field(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     if update.effective_message is None:
         return ConversationHandler.END
     field_name = _message_text(update).lower()
-    if field_name not in EDITABLE_FIELDS:
+    if field_name not in EDIT_FIELD_SPECS:
         await update.effective_message.reply_text(
-            "Invalid field. Choose one of: title, artist, key, tempo, tags, notes."
+            "Invalid field. Choose one of: " + _editable_field_list() + "."
         )
         return EDIT_FIELD
 
-    _user_state(context)[EDIT_FIELD_KEY] = field_name
-    prompt = {
-        "title": "New title?",
-        "artist": "New artist or source?",
-        "key": "New key?",
-        "tempo": "New tempo BPM? Use a number or 'clear'.",
-        "tags": "New comma-separated tags? Use 'clear' for none.",
-        "notes": "New notes? Use 'clear' for none.",
-    }[field_name]
-    await update.effective_message.reply_text(prompt)
-    return EDIT_VALUE
+    state = _user_state(context)
+    song_id = state.get(EDIT_SONG_ID_KEY)
+    if not isinstance(song_id, int):
+        await update.effective_message.reply_text(
+            "Edit state was lost. Start again with /editsong <id>."
+        )
+        return ConversationHandler.END
+
+    state[EDIT_FIELD_KEY] = field_name
+    return await _reply_with_edit_value_prompt(
+        update,
+        context,
+        song_id=song_id,
+        field_name=field_name,
+    )
 
 
 async def edit_song_value(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -287,14 +466,37 @@ async def edit_song_value(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             "Edit state was lost. Start again with /editsong <id>."
         )
         return ConversationHandler.END
+    if field_name not in EDIT_FIELD_SPECS:
+        await update.effective_message.reply_text(
+            "Edit state was lost. Start again with /editsong <id>."
+        )
+        return ConversationHandler.END
 
     try:
         update_payload = _build_update_payload(field_name, _message_text(update))
-        service = get_song_service(context)
+    except ValueError as error:
+        return await _reply_with_edit_value_prompt(
+            update,
+            context,
+            song_id=song_id,
+            field_name=field_name,
+            error_message=str(error),
+        )
+
+    service = get_song_service(context)
+    try:
         song = await service.update_song(song_id, update_payload)
-    except (SongNotFoundError, ValueError) as error:
+    except SongNotFoundError as error:
         await update.effective_message.reply_text(str(error))
         return ConversationHandler.END
+    except ValueError as error:
+        return await _reply_with_edit_value_prompt(
+            update,
+            context,
+            song_id=song_id,
+            field_name=field_name,
+            error_message=str(error),
+        )
 
     state.pop(EDIT_SONG_ID_KEY, None)
     state.pop(EDIT_FIELD_KEY, None)
@@ -315,22 +517,10 @@ def _pending_song(context: ContextTypes.DEFAULT_TYPE) -> dict[str, object]:
 
 
 def _build_update_payload(field_name: str, raw_value: str) -> SongUpdate:
-    if field_name == "title":
-        return SongUpdate(title=raw_value)
-    if field_name == "artist":
-        return SongUpdate(artist_or_source=raw_value)
-    if field_name == "key":
-        return SongUpdate(key=raw_value)
-    if field_name == "tempo":
-        if raw_value.lower() == "clear":
-            return SongUpdate(tempo_bpm=None)
-        return SongUpdate(tempo_bpm=int(raw_value))
-    if field_name == "tags":
-        tags = [] if raw_value.lower() == "clear" else parse_tag_input(raw_value)
-        return SongUpdate(tags=tags)
-    if field_name == "notes":
-        return SongUpdate(notes=None if raw_value.lower() == "clear" else raw_value)
-    raise ValueError(f"Unsupported field: {field_name}")
+    spec = EDIT_FIELD_SPECS.get(field_name)
+    if spec is None:
+        raise ValueError(f"Unsupported field: {field_name}")
+    return spec.parse_input(raw_value)
 
 
 def _conversation_fallbacks() -> list[BaseHandler]:

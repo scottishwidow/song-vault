@@ -5,7 +5,7 @@
 This repository hosts a Telegram bot for repertoire management. Keep the baseline simple, async-first, and service-oriented.
 
 ## Commit Hygiene
-- After completing any task, **always propose a commit message**.
+- After completing any task, **always propose a commit message** if the task is code based.
 - The commit message must follow a consistent structure:
   - Short, descriptive title (imperative mood)
   - Optional body with context if needed
