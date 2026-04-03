@@ -10,7 +10,7 @@ from bot.runtime import SETTINGS_KEY, SONG_SERVICE_KEY
 from config.settings import Settings
 from handlers.navigation import SEARCH_PENDING_KEY, SONG_BROWSER_STATE_KEY, menu_text_router
 from handlers.navigation import navigation_callback_router as navigation_callback_router
-from handlers.ui import MENU_SEARCH, MENU_SONGS
+from handlers.ui import MENU_SEARCH, MENU_SONGS, MENU_START
 from models.song import Song, SongStatus
 
 
@@ -131,6 +131,52 @@ async def test_menu_search_prompt_then_query_opens_browser_results() -> None:
     query_reply.assert_awaited_once()
     message_text = query_reply.await_args.args[0]
     assert 'Matches for "grace" (1)' in message_text
+
+
+@pytest.mark.asyncio
+async def test_start_button_returns_home_screen_and_clears_navigation_state() -> None:
+    song_service = SimpleNamespace(list_songs=AsyncMock(return_value=[]))
+    context = build_context(song_service=song_service)
+    context.user_data[SEARCH_PENDING_KEY] = True
+    context.user_data[SONG_BROWSER_STATE_KEY] = {
+        "mode": "browse",
+        "title": "Active songs",
+        "items": [],
+    }
+    update, reply = build_message_update(text=MENU_START)
+
+    await menu_text_router(update, context)
+
+    assert SEARCH_PENDING_KEY not in context.user_data
+    assert SONG_BROWSER_STATE_KEY not in context.user_data
+    reply.assert_awaited_once()
+    assert reply.await_args.args[0] == "Song Vault is ready.\nUse the menu buttons below."
+    keyboard = reply.await_args.kwargs["reply_markup"]
+    rows = [[button.text for button in row] for row in keyboard.keyboard]
+    assert rows[0] == [MENU_START, MENU_SONGS]
+
+
+@pytest.mark.asyncio
+async def test_search_cancel_returns_home_screen() -> None:
+    song_service = SimpleNamespace(list_songs=AsyncMock(return_value=[]))
+    context = build_context(song_service=song_service)
+    prompt_update, _ = build_message_update(text=MENU_SEARCH)
+
+    await menu_text_router(prompt_update, context)
+
+    cancel_update, cancel_reply = build_message_update(text="Cancel")
+    cancel_update.effective_user = prompt_update.effective_user
+    cancel_update.effective_chat = prompt_update.effective_chat
+
+    await menu_text_router(cancel_update, context)
+
+    assert SEARCH_PENDING_KEY not in context.user_data
+    cancel_reply.assert_awaited_once()
+    assert cancel_reply.await_args.args[0] == (
+        "Cancelled.\nSong Vault is ready.\nUse the menu buttons below."
+    )
+    keyboard = cancel_reply.await_args.kwargs["reply_markup"]
+    assert keyboard.keyboard[0][0].text == MENU_START
 
 
 @pytest.mark.asyncio

@@ -13,7 +13,7 @@ The MVP is complete. The current repository baseline is the finished admin-opera
 - Admin-only chart upload flow with one active chart per song
 - Chart retrieval by song ID
 - Admin-only repertoire backup export/import (ZIP with chart binaries)
-- Slash commands retained as fallback for advanced/direct usage
+- `/start` as the only typed entry/reset path; all other user actions stay in buttons
 - Postgres-backed persistence and Alembic migrations
 - Ruff, mypy, pytest, pre-commit, and GitHub Actions
 

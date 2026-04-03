@@ -14,18 +14,11 @@ def help_text() -> str:
         [
             "Song Vault menu:",
             "Use the on-screen buttons for day-to-day navigation.",
+            "Tap Start anytime to return to the main menu.",
             "",
-            "Commands (fallback):",
-            "/songs - list active songs",
-            "/search <text> - search by title, source, or tag",
-            "/addsong - guided song creation",
-            "/editsong <id> - guided song update",
-            "/archivesong <id> - archive a song",
-            "/tags - list known tags",
-            "/uploadchart <song_id> - upload or replace a chart image (admin only)",
-            "/chart <song_id> - fetch the current chart image",
-            "/exportbackup - export repertoire backup (admin only)",
-            "/importbackup - import repertoire backup (admin only)",
+            "In private chats, /start also reopens the menu if needed.",
+            "",
+            "Admin actions remain available from the lower menu rows.",
         ]
     )
 
@@ -35,15 +28,27 @@ async def ensure_admin(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bo
     user = update.effective_user
     if user is None or user.id not in settings.admin_telegram_user_ids:
         if update.effective_message is not None:
-            await update.effective_message.reply_text("Admin access is required for this command.")
+            await update.effective_message.reply_text("Admin access is required for this action.")
         return False
     return True
 
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    await send_home_screen(update, context)
+
+
+async def send_home_screen(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    *,
+    prefix: str | None = None,
+) -> None:
     if update.effective_message is not None:
+        lines = ["Song Vault is ready.", "Use the menu buttons below."]
+        if prefix:
+            lines.insert(0, prefix)
         await update.effective_message.reply_text(
-            "Song Vault is ready.\nUse the menu buttons below, or /help for command fallback.",
+            "\n".join(lines),
             reply_markup=home_menu_markup(update, context),
         )
 

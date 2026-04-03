@@ -9,7 +9,6 @@ from telegram import ReplyKeyboardRemove, Update
 from telegram.ext import (
     BaseHandler,
     CallbackQueryHandler,
-    CommandHandler,
     ContextTypes,
     ConversationHandler,
     MessageHandler,
@@ -17,9 +16,9 @@ from telegram.ext import (
 )
 
 from bot.runtime import get_song_service
-from handlers.common import ensure_admin
+from handlers.common import ensure_admin, send_home_screen
 from handlers.ui import (
-    BUTTON_CANCEL,
+    CANCEL_BUTTON_PATTERN,
     MENU_ADD_SONG,
     cancel_markup,
     home_menu_markup,
@@ -408,7 +407,8 @@ async def _reply_with_edit_value_prompt(
         return ConversationHandler.END
     if field_name not in EDIT_FIELD_SPECS:
         await update.effective_message.reply_text(
-            "Edit state was lost. Start again with /editsong <id>."
+            "Edit state was lost. Start again from the song details screen.",
+            reply_markup=home_menu_markup(update, context) or ReplyKeyboardRemove(),
         )
         return ConversationHandler.END
 
@@ -422,7 +422,7 @@ async def _reply_with_edit_value_prompt(
     prompt = _edit_value_prompt(song, field_name)
     if error_message:
         prompt = f"{error_message}\n{prompt}"
-    await update.effective_message.reply_text(prompt)
+    await update.effective_message.reply_text(prompt, reply_markup=cancel_markup(update))
     return EDIT_VALUE
 
 
@@ -512,11 +512,7 @@ async def cancel_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     _user_state(context).pop(PENDING_SONG_KEY, None)
     _user_state(context).pop(EDIT_SONG_ID_KEY, None)
     _user_state(context).pop(EDIT_FIELD_KEY, None)
-    if update.effective_message is not None:
-        await update.effective_message.reply_text(
-            "Cancelled.",
-            reply_markup=home_menu_markup(update, context) or ReplyKeyboardRemove(),
-        )
+    await send_home_screen(update, context, prefix="Cancelled.")
     return ConversationHandler.END
 
 
@@ -731,7 +727,8 @@ async def _start_edit_song(
         + _edit_field_previews(song)
         + "\n\nWhich field? Choose one of: "
         + _editable_field_list()
-        + ".\nUse /cancel to stop."
+        + ".\nTap Cancel to stop.",
+        reply_markup=cancel_markup(update),
     )
     return EDIT_FIELD
 
@@ -742,7 +739,8 @@ async def edit_song_field(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     field_name = _message_text(update).lower()
     if field_name not in EDIT_FIELD_SPECS:
         await update.effective_message.reply_text(
-            "Invalid field. Choose one of: " + _editable_field_list() + "."
+            "Invalid field. Choose one of: " + _editable_field_list() + ".",
+            reply_markup=cancel_markup(update),
         )
         return EDIT_FIELD
 
@@ -750,7 +748,8 @@ async def edit_song_field(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     song_id = state.get(EDIT_SONG_ID_KEY)
     if not isinstance(song_id, int):
         await update.effective_message.reply_text(
-            "Edit state was lost. Start again with /editsong <id>."
+            "Edit state was lost. Start again from the song details screen.",
+            reply_markup=home_menu_markup(update, context) or ReplyKeyboardRemove(),
         )
         return ConversationHandler.END
 
@@ -772,12 +771,14 @@ async def edit_song_value(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     field_name = state.get(EDIT_FIELD_KEY)
     if not isinstance(song_id, int) or not isinstance(field_name, str):
         await update.effective_message.reply_text(
-            "Edit state was lost. Start again with /editsong <id>."
+            "Edit state was lost. Start again from the song details screen.",
+            reply_markup=home_menu_markup(update, context) or ReplyKeyboardRemove(),
         )
         return ConversationHandler.END
     if field_name not in EDIT_FIELD_SPECS:
         await update.effective_message.reply_text(
-            "Edit state was lost. Start again with /editsong <id>."
+            "Edit state was lost. Start again from the song details screen.",
+            reply_markup=home_menu_markup(update, context) or ReplyKeyboardRemove(),
         )
         return ConversationHandler.END
 
@@ -845,11 +846,9 @@ def _song_id_from_callback(data: str | None, *, prefix: str) -> int | None:
 
 
 def _conversation_fallbacks() -> list[BaseHandler]:
-    cancel_pattern = re.compile(rf"^{re.escape(BUTTON_CANCEL)}$")
     return [
-        CommandHandler("cancel", cancel_command),
         MessageHandler(
-            filters.Regex(cancel_pattern) & ~filters.COMMAND & filters.UpdateType.MESSAGE,
+            filters.Regex(CANCEL_BUTTON_PATTERN) & ~filters.COMMAND & filters.UpdateType.MESSAGE,
             cancel_command,
         ),
     ]
@@ -861,7 +860,16 @@ def _text_step(
         Coroutine[Any, Any, object],
     ],
 ) -> BaseHandler:
-    return MessageHandler(filters.TEXT & ~filters.COMMAND & filters.UpdateType.MESSAGE, callback)
+    return MessageHandler(_conversation_text_filter(), callback)
+
+
+def _conversation_text_filter() -> filters.BaseFilter:
+    return (
+        filters.TEXT
+        & ~filters.COMMAND
+        & ~filters.Regex(CANCEL_BUTTON_PATTERN)
+        & filters.UpdateType.MESSAGE
+    )
 
 
 def _menu_entry(
@@ -878,7 +886,6 @@ def _menu_entry(
 def build_add_song_handler() -> ConversationHandler:
     return ConversationHandler(
         entry_points=[
-            CommandHandler("addsong", add_song_start),
             _menu_entry(MENU_ADD_SONG, add_song_start),
         ],
         states={
@@ -901,7 +908,6 @@ def build_add_song_handler() -> ConversationHandler:
 def build_edit_song_handler() -> ConversationHandler:
     return ConversationHandler(
         entry_points=[
-            CommandHandler("editsong", edit_song_start),
             CallbackQueryHandler(edit_song_start_from_callback, pattern=r"^edit:start:\d+$"),
         ],
         states={

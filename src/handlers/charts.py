@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import re
 from io import BytesIO
 from typing import cast
 from urllib.parse import urlparse
@@ -8,7 +7,6 @@ from urllib.parse import urlparse
 from telegram import InputFile, ReplyKeyboardRemove, Update
 from telegram.ext import (
     CallbackQueryHandler,
-    CommandHandler,
     ContextTypes,
     ConversationHandler,
     MessageHandler,
@@ -16,8 +14,8 @@ from telegram.ext import (
 )
 
 from bot.runtime import get_chart_service
-from handlers.common import ensure_admin
-from handlers.ui import BUTTON_CANCEL, home_menu_markup
+from handlers.common import ensure_admin, send_home_screen
+from handlers.ui import CANCEL_BUTTON_PATTERN, cancel_markup, home_menu_markup
 from services.chart_service import ChartFile, ChartUpload, SongChartNotFoundError
 from services.song_service import SongNotFoundError
 from storage.chart_storage import ChartStorageError
@@ -114,7 +112,8 @@ async def _begin_upload_for_song_id(
 
     _user_state(context)[UPLOAD_CHART_STATE_KEY] = {"song_id": song_id}
     await update.effective_message.reply_text(
-        f"Upload target: song #{song_id}.\nSend the chart image as a photo or image document."
+        f"Upload target: song #{song_id}.\nSend the chart image as a photo or image document.",
+        reply_markup=cancel_markup(update),
     )
     return UPLOAD_MEDIA
 
@@ -127,7 +126,8 @@ async def upload_chart_media(update: Update, context: ContextTypes.DEFAULT_TYPE)
     song_id = state.get("song_id")
     if not isinstance(song_id, int):
         await update.effective_message.reply_text(
-            "Upload state was lost. Start again with /uploadchart <song_id>."
+            "Upload state was lost. Start again from Upload Chart.",
+            reply_markup=home_menu_markup(update, context) or ReplyKeyboardRemove(),
         )
         return ConversationHandler.END
 
@@ -155,7 +155,10 @@ async def upload_chart_media(update: Update, context: ContextTypes.DEFAULT_TYPE)
     state["content"] = content
     state["content_type"] = content_type
     state["filename"] = filename
-    await update.effective_message.reply_text("Optional source URL? Send an http(s) URL or 'skip'.")
+    await update.effective_message.reply_text(
+        "Optional source URL? Send an http(s) URL or 'skip'.",
+        reply_markup=cancel_markup(update),
+    )
     return UPLOAD_SOURCE_URL
 
 
@@ -176,7 +179,10 @@ async def upload_chart_source_url(update: Update, context: ContextTypes.DEFAULT_
 
     state = _upload_state(context)
     state["source_url"] = source_url
-    await update.effective_message.reply_text("Optional chart key? Send text or 'skip'.")
+    await update.effective_message.reply_text(
+        "Optional chart key? Send text or 'skip'.",
+        reply_markup=cancel_markup(update),
+    )
     return UPLOAD_CHART_KEY
 
 
@@ -198,7 +204,8 @@ async def upload_chart_chart_key(update: Update, context: ContextTypes.DEFAULT_T
         or not isinstance(filename, str)
     ):
         await update.effective_message.reply_text(
-            "Upload state was lost. Start again with /uploadchart <song_id>."
+            "Upload state was lost. Start again from Upload Chart.",
+            reply_markup=home_menu_markup(update, context) or ReplyKeyboardRemove(),
         )
         return ConversationHandler.END
 
@@ -229,45 +236,49 @@ async def upload_chart_chart_key(update: Update, context: ContextTypes.DEFAULT_T
 
 async def cancel_upload_chart(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     _user_state(context).pop(UPLOAD_CHART_STATE_KEY, None)
-    if update.effective_message is not None:
-        await update.effective_message.reply_text(
-            "Cancelled.",
-            reply_markup=home_menu_markup(update, context) or ReplyKeyboardRemove(),
-        )
+    await send_home_screen(update, context, prefix="Cancelled.")
     return ConversationHandler.END
 
 
 def build_upload_chart_handler() -> ConversationHandler:
-    cancel_pattern = re.compile(rf"^{re.escape(BUTTON_CANCEL)}$")
     return ConversationHandler(
         entry_points=[
-            CommandHandler("uploadchart", upload_chart_start),
             CallbackQueryHandler(upload_chart_start_from_callback, pattern=r"^upload:start:\d+$"),
         ],
         states={
             UPLOAD_MEDIA: [
                 MessageHandler(
-                    filters.ALL & ~filters.COMMAND & filters.UpdateType.MESSAGE,
+                    filters.ALL
+                    & ~filters.COMMAND
+                    & ~filters.Regex(CANCEL_BUTTON_PATTERN)
+                    & filters.UpdateType.MESSAGE,
                     upload_chart_media,
                 )
             ],
             UPLOAD_SOURCE_URL: [
                 MessageHandler(
-                    filters.TEXT & ~filters.COMMAND & filters.UpdateType.MESSAGE,
+                    filters.TEXT
+                    & ~filters.COMMAND
+                    & ~filters.Regex(CANCEL_BUTTON_PATTERN)
+                    & filters.UpdateType.MESSAGE,
                     upload_chart_source_url,
                 )
             ],
             UPLOAD_CHART_KEY: [
                 MessageHandler(
-                    filters.TEXT & ~filters.COMMAND & filters.UpdateType.MESSAGE,
+                    filters.TEXT
+                    & ~filters.COMMAND
+                    & ~filters.Regex(CANCEL_BUTTON_PATTERN)
+                    & filters.UpdateType.MESSAGE,
                     upload_chart_chart_key,
                 )
             ],
         },
         fallbacks=[
-            CommandHandler("cancel", cancel_upload_chart),
             MessageHandler(
-                filters.Regex(cancel_pattern) & ~filters.COMMAND & filters.UpdateType.MESSAGE,
+                filters.Regex(CANCEL_BUTTON_PATTERN)
+                & ~filters.COMMAND
+                & filters.UpdateType.MESSAGE,
                 cancel_upload_chart,
             ),
         ],

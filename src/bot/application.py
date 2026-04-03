@@ -1,7 +1,7 @@
 import logging
 
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
-from telegram import BotCommand, Update
+from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
 
 from bot.runtime import (
@@ -12,18 +12,11 @@ from bot.runtime import (
     SONG_SERVICE_KEY,
 )
 from config.settings import Settings
-from handlers.backup import build_import_backup_handler, export_backup_command
-from handlers.charts import build_upload_chart_handler, chart_command
-from handlers.common import error_handler, help_command, start_command
+from handlers.backup import build_import_backup_handler
+from handlers.charts import build_upload_chart_handler
+from handlers.common import error_handler, start_command
 from handlers.navigation import build_menu_text_handler, build_navigation_callback_handler
-from handlers.repertoire import (
-    archive_song_command,
-    build_add_song_handler,
-    build_edit_song_handler,
-    list_songs_command,
-    search_songs_command,
-    tags_command,
-)
+from handlers.repertoire import build_add_song_handler, build_edit_song_handler
 from services.chart_service import ChartService
 from services.repertoire_backup_service import RepertoireBackupService
 from services.song_service import SongService
@@ -36,23 +29,7 @@ async def post_init(application: Application) -> None:
     chart_service = application.bot_data.get(CHART_SERVICE_KEY)
     if isinstance(chart_service, ChartService):
         await chart_service.ensure_storage_ready()
-
-    await application.bot.set_my_commands(
-        [
-            BotCommand("start", "Show the bot overview"),
-            BotCommand("help", "Show available commands"),
-            BotCommand("songs", "List active songs"),
-            BotCommand("search", "Search repertoire"),
-            BotCommand("addsong", "Add a new song"),
-            BotCommand("editsong", "Edit a song"),
-            BotCommand("archivesong", "Archive a song"),
-            BotCommand("tags", "List active tags"),
-            BotCommand("uploadchart", "Upload or replace chart image"),
-            BotCommand("chart", "Get current chart image"),
-            BotCommand("exportbackup", "Export repertoire backup"),
-            BotCommand("importbackup", "Import repertoire backup"),
-        ]
-    )
+    await application.bot.delete_my_commands()
 
 
 async def post_shutdown(application: Application) -> None:
@@ -65,7 +42,7 @@ async def unknown_command(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     del context
     if update.effective_message is not None:
         await update.effective_message.reply_text(
-            "Unknown command. Use /help to see supported commands."
+            "Unsupported command. Use the menu buttons or send /start."
         )
 
 
@@ -98,13 +75,6 @@ def build_application(
     application.bot_data[ENGINE_KEY] = engine
 
     application.add_handler(CommandHandler("start", start_command))
-    application.add_handler(CommandHandler("help", help_command))
-    application.add_handler(CommandHandler("songs", list_songs_command))
-    application.add_handler(CommandHandler("search", search_songs_command))
-    application.add_handler(CommandHandler("archivesong", archive_song_command))
-    application.add_handler(CommandHandler("tags", tags_command))
-    application.add_handler(CommandHandler("chart", chart_command))
-    application.add_handler(CommandHandler("exportbackup", export_backup_command))
     application.add_handler(build_add_song_handler())
     application.add_handler(build_edit_song_handler())
     application.add_handler(build_upload_chart_handler())

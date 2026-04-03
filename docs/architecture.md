@@ -1,6 +1,6 @@
 # Architecture
 
-The application runs as a long-polling Telegram bot. Telegram updates enter through `python-telegram-bot` handlers, which delegate repertoire and chart operations to service-layer components. The UX is button-first via reply/inline keyboards, with slash commands kept as fallback. Song and chart metadata persist through SQLAlchemy async sessions backed by Postgres. Chart binaries live in S3-compatible object storage.
+The application runs as a long-polling Telegram bot. Telegram updates enter through `python-telegram-bot` handlers, which delegate repertoire and chart operations to service-layer components. The UX is button-first via reply/inline keyboards, with `/start` kept as the only typed entry/reset fallback. Song and chart metadata persist through SQLAlchemy async sessions backed by Postgres. Chart binaries live in S3-compatible object storage.
 
 ## Flow
 

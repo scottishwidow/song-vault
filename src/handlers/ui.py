@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from collections.abc import Sequence
 
 from telegram import KeyboardButton, ReplyKeyboardMarkup, Update
@@ -7,18 +8,21 @@ from telegram.ext import ContextTypes
 
 from bot.runtime import get_settings
 
-MENU_SONGS = "Songs"
-MENU_SEARCH = "Search"
-MENU_TAGS = "Tags"
-MENU_HELP = "Help"
-MENU_ADD_SONG = "Add Song"
-MENU_UPLOAD_CHART = "Upload Chart"
-MENU_BACKUP = "Backup"
+MENU_START = "🏠 Start"
+MENU_SONGS = "🎵 Songs"
+MENU_SEARCH = "🔎 Search"
+MENU_TAGS = "🏷️ Tags"
+MENU_HELP = "❓ Help"
+MENU_ADD_SONG = "➕ Add Song"
+MENU_UPLOAD_CHART = "🖼️ Upload Chart"
+MENU_BACKUP = "💾 Backup"
 
 BUTTON_SKIP = "Skip"
 BUTTON_CANCEL = "Cancel"
+CANCEL_BUTTON_PATTERN = re.compile(rf"^{re.escape(BUTTON_CANCEL)}$")
 
 MAIN_MENU_BUTTONS = {
+    MENU_START,
     MENU_SONGS,
     MENU_SEARCH,
     MENU_TAGS,
@@ -51,8 +55,9 @@ def home_menu_markup(
         return None
 
     rows: list[list[KeyboardButton]] = [
-        [KeyboardButton(MENU_SONGS), KeyboardButton(MENU_SEARCH)],
-        [KeyboardButton(MENU_TAGS), KeyboardButton(MENU_HELP)],
+        [KeyboardButton(MENU_START), KeyboardButton(MENU_SONGS)],
+        [KeyboardButton(MENU_SEARCH), KeyboardButton(MENU_TAGS)],
+        [KeyboardButton(MENU_HELP)],
     ]
     if is_admin_user(update, context):
         rows.extend(

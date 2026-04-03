@@ -10,11 +10,17 @@ from config.settings import Settings
 from handlers.backup import (
     IMPORT_BACKUP_UPLOAD,
     build_import_backup_handler,
+    cancel_import_backup,
     export_backup_command,
     import_backup_file,
     import_backup_start,
 )
-from handlers.charts import build_upload_chart_handler, chart_command, upload_chart_start
+from handlers.charts import (
+    build_upload_chart_handler,
+    cancel_upload_chart,
+    chart_command,
+    upload_chart_start,
+)
 from handlers.common import ensure_admin
 from handlers.repertoire import (
     EDIT_FIELD,
@@ -24,12 +30,14 @@ from handlers.repertoire import (
     RESULT_MESSAGE_CHAR_LIMIT,
     build_add_song_handler,
     build_edit_song_handler,
+    cancel_command,
     edit_song_field,
     edit_song_start,
     edit_song_value,
     list_songs_command,
     search_songs_command,
 )
+from handlers.ui import MENU_START
 from models.song import Song, SongStatus
 from services.chart_service import SongChartNotFoundError
 from services.repertoire_backup_service import BackupArchive
@@ -75,6 +83,7 @@ def build_update(*, user_id: int = 1) -> tuple[SimpleNamespace, AsyncMock]:
     update = SimpleNamespace(
         effective_user=SimpleNamespace(id=user_id),
         effective_message=message,
+        effective_chat=SimpleNamespace(type="private"),
     )
     return update, reply
 
@@ -111,7 +120,7 @@ def build_song(
     return song
 
 
-def build_telegram_update(*, edited: bool) -> Update:
+def build_telegram_update(*, edited: bool, text: str = "value") -> Update:
     user = User(id=1, first_name="Test", is_bot=False)
     chat = Chat(id=1, type="private")
     message = Message(
@@ -119,7 +128,7 @@ def build_telegram_update(*, edited: bool) -> Update:
         date=datetime.now(UTC),
         chat=chat,
         from_user=user,
-        text="value",
+        text=text,
     )
     if edited:
         return Update(update_id=2, edited_message=message)
@@ -134,7 +143,7 @@ async def test_ensure_admin_rejects_non_admin() -> None:
     allowed = await ensure_admin(update, context)
 
     assert allowed is False
-    reply.assert_awaited_once_with("Admin access is required for this command.")
+    reply.assert_awaited_once_with("Admin access is required for this action.")
 
 
 def test_add_song_conversation_filters_ignore_edited_messages() -> None:
@@ -179,6 +188,26 @@ def test_import_backup_conversation_filters_ignore_edited_messages() -> None:
         for state_handler in state_handlers:
             assert bool(state_handler.check_update(message_update))
             assert not bool(state_handler.check_update(edited_update))
+
+
+@pytest.mark.parametrize(
+    "handler_factory",
+    [
+        build_add_song_handler,
+        build_edit_song_handler,
+        build_upload_chart_handler,
+        build_import_backup_handler,
+    ],
+)
+def test_conversation_state_handlers_do_not_consume_cancel_button(handler_factory: object) -> None:
+    handler = handler_factory()
+    cancel_update = build_telegram_update(edited=False, text="Cancel")
+
+    for state_handlers in handler.states.values():
+        for state_handler in state_handlers:
+            assert not bool(state_handler.check_update(cancel_update))
+
+    assert any(bool(fallback.check_update(cancel_update)) for fallback in handler.fallbacks)
 
 
 @pytest.mark.asyncio
@@ -331,7 +360,7 @@ async def test_upload_chart_start_requires_admin() -> None:
     state = await upload_chart_start(update, context)
 
     assert state == -1
-    reply.assert_awaited_once_with("Admin access is required for this command.")
+    reply.assert_awaited_once_with("Admin access is required for this action.")
     chart_service.assert_song_exists.assert_not_awaited()
 
 
@@ -381,6 +410,8 @@ async def test_edit_song_start_shows_editable_field_previews() -> None:
     assert "tags: hymn, classic" in message
     assert "notes: Slow intro." in message
     assert "arrangement_notes: Lift dynamics in verse two." in message
+    assert "Tap Cancel to stop." in message
+    assert reply.await_args.kwargs["reply_markup"].keyboard[0][0].text == "Cancel"
 
 
 @pytest.mark.asyncio
@@ -398,6 +429,7 @@ async def test_edit_song_field_shows_prompt_with_current_value() -> None:
     message = reply.await_args.args[0]
     assert "New tempo BPM? Use a number or 'clear'." in message
     assert "Current tempo: 72" in message
+    assert reply.await_args.kwargs["reply_markup"].keyboard[0][0].text == "Cancel"
 
 
 @pytest.mark.asyncio
@@ -409,10 +441,11 @@ async def test_edit_song_field_rejects_unknown_field() -> None:
     state = await edit_song_field(update, context)
 
     assert state == EDIT_FIELD
-    reply.assert_awaited_once_with(
+    assert reply.await_args.args[0] == (
         "Invalid field. Choose one of: title, artist, key, capo, "
         "time_signature, tempo, tags, notes, arrangement_notes."
     )
+    assert reply.await_args.kwargs["reply_markup"].keyboard[0][0].text == "Cancel"
 
 
 @pytest.mark.asyncio
@@ -522,7 +555,7 @@ async def test_export_backup_command_requires_admin() -> None:
 
     await export_backup_command(update, context)
 
-    reply.assert_awaited_once_with("Admin access is required for this command.")
+    reply.assert_awaited_once_with("Admin access is required for this action.")
     backup_service.export_backup.assert_not_awaited()
 
 
@@ -560,7 +593,8 @@ async def test_import_backup_start_prompts_for_zip_file() -> None:
     state = await import_backup_start(update, context)
 
     assert state == IMPORT_BACKUP_UPLOAD
-    reply.assert_awaited_once_with("Send a .zip backup file to import, or /cancel.")
+    assert reply.await_args.args[0] == "Send a .zip backup file to import, or tap Cancel."
+    assert reply.await_args.kwargs["reply_markup"].keyboard[0][0].text == "Cancel"
 
 
 @pytest.mark.asyncio
@@ -599,3 +633,53 @@ async def test_import_backup_file_runs_restore_and_reports_success() -> None:
     message = reply.await_args.args[0]
     assert "Songs restored: 3" in message
     assert "Charts restored: 2" in message
+
+
+@pytest.mark.asyncio
+async def test_cancel_command_returns_home_menu() -> None:
+    update, reply = build_update()
+    context = build_context()
+    context.user_data["pending_song"] = {"title": "Amazing Grace"}
+    context.user_data["edit_song_id"] = 5
+    context.user_data["edit_field"] = "title"
+
+    state = await cancel_command(update, context)
+
+    assert state == -1
+    assert context.user_data == {}
+    assert reply.await_args.args[0] == (
+        "Cancelled.\nSong Vault is ready.\nUse the menu buttons below."
+    )
+    assert reply.await_args.kwargs["reply_markup"].keyboard[0][0].text == MENU_START
+
+
+@pytest.mark.asyncio
+async def test_cancel_upload_chart_returns_home_menu() -> None:
+    update, reply = build_update()
+    context = build_context()
+    context.user_data["upload_chart_state"] = {"song_id": 5}
+
+    state = await cancel_upload_chart(update, context)
+
+    assert state == -1
+    assert context.user_data == {}
+    assert reply.await_args.args[0] == (
+        "Cancelled.\nSong Vault is ready.\nUse the menu buttons below."
+    )
+    assert reply.await_args.kwargs["reply_markup"].keyboard[0][0].text == MENU_START
+
+
+@pytest.mark.asyncio
+async def test_cancel_import_backup_returns_home_menu() -> None:
+    update, reply = build_update()
+    context = build_context()
+    context.user_data["import_backup_state"] = {}
+
+    state = await cancel_import_backup(update, context)
+
+    assert state == -1
+    assert context.user_data == {}
+    assert reply.await_args.args[0] == (
+        "Cancelled.\nSong Vault is ready.\nUse the menu buttons below."
+    )
+    assert reply.await_args.kwargs["reply_markup"].keyboard[0][0].text == MENU_START

@@ -2,13 +2,13 @@ from __future__ import annotations
 
 from typing import TypedDict, cast
 
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardRemove, Update
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import CallbackQueryHandler, ContextTypes, MessageHandler, filters
 
 from bot.runtime import get_song_service
 from handlers.backup import export_backup_command
 from handlers.charts import send_chart_for_song_id
-from handlers.common import help_command
+from handlers.common import help_command, send_home_screen
 from handlers.repertoire import format_song, tags_command
 from handlers.ui import (
     BUTTON_CANCEL,
@@ -17,6 +17,7 @@ from handlers.ui import (
     MENU_HELP,
     MENU_SEARCH,
     MENU_SONGS,
+    MENU_START,
     MENU_TAGS,
     MENU_UPLOAD_CHART,
     cancel_markup,
@@ -50,6 +51,10 @@ async def menu_text_router(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     text = message.text.strip()
     state = _user_state(context)
 
+    if text == MENU_START:
+        _reset_navigation_state(context)
+        await send_home_screen(update, context)
+        return
     if text == MENU_SONGS:
         _clear_search_pending(context)
         await show_song_browser(update, context)
@@ -83,11 +88,8 @@ async def menu_text_router(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 
     if bool(state.get(SEARCH_PENDING_KEY)):
         if text == BUTTON_CANCEL:
-            _clear_search_pending(context)
-            await message.reply_text(
-                "Cancelled.",
-                reply_markup=home_menu_markup(update, context) or ReplyKeyboardRemove(),
-            )
+            _reset_navigation_state(context)
+            await send_home_screen(update, context, prefix="Cancelled.")
             return
         if text in MAIN_MENU_BUTTONS:
             _clear_search_pending(context)
@@ -98,7 +100,7 @@ async def menu_text_router(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         return
 
     await message.reply_text(
-        "Use the menu buttons or /help.",
+        "Use the menu buttons or tap Start.",
         reply_markup=home_menu_markup(update, context),
     )
 
@@ -541,6 +543,11 @@ def _parse_single_song_id(data: str, *, prefix: str) -> int | None:
 
 def _clear_search_pending(context: ContextTypes.DEFAULT_TYPE) -> None:
     _user_state(context).pop(SEARCH_PENDING_KEY, None)
+
+
+def _reset_navigation_state(context: ContextTypes.DEFAULT_TYPE) -> None:
+    _clear_search_pending(context)
+    _user_state(context).pop(SONG_BROWSER_STATE_KEY, None)
 
 
 def _user_state(context: ContextTypes.DEFAULT_TYPE) -> dict[str, object]:
