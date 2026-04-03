@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import re
 from io import BytesIO
 from typing import cast
 
 from telegram import InputFile, ReplyKeyboardRemove, Update
 from telegram.ext import (
+    CallbackQueryHandler,
     CommandHandler,
     ContextTypes,
     ConversationHandler,
@@ -14,6 +16,7 @@ from telegram.ext import (
 
 from bot.runtime import get_backup_service
 from handlers.common import ensure_admin
+from handlers.ui import BUTTON_CANCEL, home_menu_markup
 from services.repertoire_backup_service import BackupValidationError
 from storage.chart_storage import ChartStorageError
 
@@ -55,6 +58,17 @@ async def import_backup_start(update: Update, context: ContextTypes.DEFAULT_TYPE
     return IMPORT_BACKUP_UPLOAD
 
 
+async def import_backup_start_from_callback(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+) -> int:
+    query = update.callback_query
+    if query is None:
+        return ConversationHandler.END
+    await query.answer()
+    return await import_backup_start(update, context)
+
+
 async def import_backup_file(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     if update.effective_message is None:
         return ConversationHandler.END
@@ -84,7 +98,7 @@ async def import_backup_file(update: Update, context: ContextTypes.DEFAULT_TYPE)
             f"Songs restored: {summary.song_count}\n"
             f"Charts restored: {summary.chart_count}"
         ),
-        reply_markup=ReplyKeyboardRemove(),
+        reply_markup=home_menu_markup(update, context) or ReplyKeyboardRemove(),
     )
     return ConversationHandler.END
 
@@ -92,13 +106,23 @@ async def import_backup_file(update: Update, context: ContextTypes.DEFAULT_TYPE)
 async def cancel_import_backup(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     _user_state(context).pop(IMPORT_BACKUP_STATE_KEY, None)
     if update.effective_message is not None:
-        await update.effective_message.reply_text("Cancelled.", reply_markup=ReplyKeyboardRemove())
+        await update.effective_message.reply_text(
+            "Cancelled.",
+            reply_markup=home_menu_markup(update, context) or ReplyKeyboardRemove(),
+        )
     return ConversationHandler.END
 
 
 def build_import_backup_handler() -> ConversationHandler:
+    cancel_pattern = re.compile(rf"^{re.escape(BUTTON_CANCEL)}$")
     return ConversationHandler(
-        entry_points=[CommandHandler("importbackup", import_backup_start)],
+        entry_points=[
+            CommandHandler("importbackup", import_backup_start),
+            CallbackQueryHandler(
+                import_backup_start_from_callback,
+                pattern=r"^backup:import:start$",
+            ),
+        ],
         states={
             IMPORT_BACKUP_UPLOAD: [
                 MessageHandler(
@@ -107,7 +131,13 @@ def build_import_backup_handler() -> ConversationHandler:
                 )
             ],
         },
-        fallbacks=[CommandHandler("cancel", cancel_import_backup)],
+        fallbacks=[
+            CommandHandler("cancel", cancel_import_backup),
+            MessageHandler(
+                filters.Regex(cancel_pattern) & ~filters.COMMAND & filters.UpdateType.MESSAGE,
+                cancel_import_backup,
+            ),
+        ],
         name="import_backup",
         persistent=False,
     )

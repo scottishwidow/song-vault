@@ -4,6 +4,7 @@ from telegram import Update
 from telegram.ext import ContextTypes
 
 from bot.runtime import get_settings
+from handlers.ui import home_menu_markup
 
 logger = logging.getLogger(__name__)
 
@@ -11,7 +12,10 @@ logger = logging.getLogger(__name__)
 def help_text() -> str:
     return "\n".join(
         [
-            "Song Vault commands:",
+            "Song Vault menu:",
+            "Use the on-screen buttons for day-to-day navigation.",
+            "",
+            "Commands (fallback):",
             "/songs - list active songs",
             "/search <text> - search by title, source, or tag",
             "/addsong - guided song creation",
@@ -37,17 +41,19 @@ async def ensure_admin(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bo
 
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    del context
     if update.effective_message is not None:
         await update.effective_message.reply_text(
-            "Song Vault is ready.\nUse /help to view repertoire commands."
+            "Song Vault is ready.\nUse the menu buttons below, or /help for command fallback.",
+            reply_markup=home_menu_markup(update, context),
         )
 
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    del context
     if update.effective_message is not None:
-        await update.effective_message.reply_text(help_text())
+        await update.effective_message.reply_text(
+            help_text(),
+            reply_markup=home_menu_markup(update, context),
+        )
 
 
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:

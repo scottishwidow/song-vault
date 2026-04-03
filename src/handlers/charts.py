@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import re
 from io import BytesIO
 from typing import cast
 from urllib.parse import urlparse
 
 from telegram import InputFile, ReplyKeyboardRemove, Update
 from telegram.ext import (
+    CallbackQueryHandler,
     CommandHandler,
     ContextTypes,
     ConversationHandler,
@@ -15,6 +17,7 @@ from telegram.ext import (
 
 from bot.runtime import get_chart_service
 from handlers.common import ensure_admin
+from handlers.ui import BUTTON_CANCEL, home_menu_markup
 from services.chart_service import ChartFile, ChartUpload, SongChartNotFoundError
 from services.song_service import SongNotFoundError
 from storage.chart_storage import ChartStorageError
@@ -30,6 +33,16 @@ async def chart_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     song_id = _parse_song_id(context.args or [])
     if song_id is None:
         await update.effective_message.reply_text("Usage: /chart <song_id>")
+        return
+    await send_chart_for_song_id(update, context, song_id)
+
+
+async def send_chart_for_song_id(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    song_id: int,
+) -> None:
+    if update.effective_message is None:
         return
 
     service = get_chart_service(context)
@@ -63,6 +76,34 @@ async def upload_chart_start(update: Update, context: ContextTypes.DEFAULT_TYPE)
     if song_id is None:
         await update.effective_message.reply_text("Usage: /uploadchart <song_id>")
         return ConversationHandler.END
+    return await _begin_upload_for_song_id(update, context, song_id)
+
+
+async def upload_chart_start_from_callback(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+) -> int:
+    query = update.callback_query
+    if query is None:
+        return ConversationHandler.END
+    await query.answer()
+    song_id = _song_id_from_callback(query.data, prefix="upload:start:")
+    if song_id is None:
+        if update.effective_message is not None:
+            await update.effective_message.reply_text(
+                "Could not parse song selection for chart upload."
+            )
+        return ConversationHandler.END
+    return await _begin_upload_for_song_id(update, context, song_id)
+
+
+async def _begin_upload_for_song_id(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    song_id: int,
+) -> int:
+    if update.effective_message is None:
+        return ConversationHandler.END
 
     service = get_chart_service(context)
     try:
@@ -72,7 +113,9 @@ async def upload_chart_start(update: Update, context: ContextTypes.DEFAULT_TYPE)
         return ConversationHandler.END
 
     _user_state(context)[UPLOAD_CHART_STATE_KEY] = {"song_id": song_id}
-    await update.effective_message.reply_text("Send the chart image as a photo or image document.")
+    await update.effective_message.reply_text(
+        f"Upload target: song #{song_id}.\nSend the chart image as a photo or image document."
+    )
     return UPLOAD_MEDIA
 
 
@@ -179,7 +222,7 @@ async def upload_chart_chart_key(update: Update, context: ContextTypes.DEFAULT_T
     _user_state(context).pop(UPLOAD_CHART_STATE_KEY, None)
     await update.effective_message.reply_text(
         f"Uploaded chart #{chart.id} for song #{song_id}.",
-        reply_markup=ReplyKeyboardRemove(),
+        reply_markup=home_menu_markup(update, context) or ReplyKeyboardRemove(),
     )
     return ConversationHandler.END
 
@@ -187,13 +230,20 @@ async def upload_chart_chart_key(update: Update, context: ContextTypes.DEFAULT_T
 async def cancel_upload_chart(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     _user_state(context).pop(UPLOAD_CHART_STATE_KEY, None)
     if update.effective_message is not None:
-        await update.effective_message.reply_text("Cancelled.", reply_markup=ReplyKeyboardRemove())
+        await update.effective_message.reply_text(
+            "Cancelled.",
+            reply_markup=home_menu_markup(update, context) or ReplyKeyboardRemove(),
+        )
     return ConversationHandler.END
 
 
 def build_upload_chart_handler() -> ConversationHandler:
+    cancel_pattern = re.compile(rf"^{re.escape(BUTTON_CANCEL)}$")
     return ConversationHandler(
-        entry_points=[CommandHandler("uploadchart", upload_chart_start)],
+        entry_points=[
+            CommandHandler("uploadchart", upload_chart_start),
+            CallbackQueryHandler(upload_chart_start_from_callback, pattern=r"^upload:start:\d+$"),
+        ],
         states={
             UPLOAD_MEDIA: [
                 MessageHandler(
@@ -214,7 +264,13 @@ def build_upload_chart_handler() -> ConversationHandler:
                 )
             ],
         },
-        fallbacks=[CommandHandler("cancel", cancel_upload_chart)],
+        fallbacks=[
+            CommandHandler("cancel", cancel_upload_chart),
+            MessageHandler(
+                filters.Regex(cancel_pattern) & ~filters.COMMAND & filters.UpdateType.MESSAGE,
+                cancel_upload_chart,
+            ),
+        ],
         name="upload_chart",
         persistent=False,
     )
@@ -232,6 +288,18 @@ def _parse_song_id(args: list[str]) -> int | None:
 def _looks_like_http_url(value: str) -> bool:
     parsed = urlparse(value)
     return parsed.scheme in {"http", "https"} and bool(parsed.netloc)
+
+
+def _song_id_from_callback(data: str | None, *, prefix: str) -> int | None:
+    if not isinstance(data, str):
+        return None
+    if not data.startswith(prefix):
+        return None
+    raw_value = data[len(prefix) :]
+    try:
+        return int(raw_value)
+    except ValueError:
+        return None
 
 
 def _upload_state(context: ContextTypes.DEFAULT_TYPE) -> dict[str, object]:

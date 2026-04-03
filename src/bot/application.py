@@ -15,6 +15,7 @@ from config.settings import Settings
 from handlers.backup import build_import_backup_handler, export_backup_command
 from handlers.charts import build_upload_chart_handler, chart_command
 from handlers.common import error_handler, help_command, start_command
+from handlers.navigation import build_menu_text_handler, build_navigation_callback_handler
 from handlers.repertoire import (
     archive_song_command,
     build_add_song_handler,
@@ -108,6 +109,8 @@ def build_application(
     application.add_handler(build_edit_song_handler())
     application.add_handler(build_upload_chart_handler())
     application.add_handler(build_import_backup_handler())
+    application.add_handler(build_navigation_callback_handler())
+    application.add_handler(build_menu_text_handler())
     application.add_handler(MessageHandler(filters.COMMAND, unknown_command))
     application.add_error_handler(error_handler)
 
