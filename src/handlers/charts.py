@@ -13,11 +13,11 @@ from telegram.ext import (
     filters,
 )
 
-from song_vault.bot.runtime import get_chart_service
-from song_vault.handlers.common import ensure_admin
-from song_vault.services.chart_service import ChartFile, ChartUpload, SongChartNotFoundError
-from song_vault.services.song_service import SongNotFoundError
-from song_vault.storage.chart_storage import ChartStorageError
+from bot.runtime import get_chart_service
+from handlers.common import ensure_admin
+from services.chart_service import ChartFile, ChartUpload, SongChartNotFoundError
+from services.song_service import SongNotFoundError
+from storage.chart_storage import ChartStorageError
 
 UPLOAD_MEDIA, UPLOAD_SOURCE_URL, UPLOAD_CHART_KEY = range(3)
 UPLOAD_CHART_STATE_KEY = "upload_chart_state"

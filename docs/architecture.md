@@ -4,8 +4,8 @@ The application runs as a long-polling Telegram bot. Telegram updates enter thro
 
 ## Flow
 
-1. `song_vault.app` loads settings, logging, and database engine configuration.
-2. `song_vault.bot.application` builds the Telegram application and registers handlers.
+1. `app` loads settings, logging, and database engine configuration.
+2. `bot.application` builds the Telegram application and registers handlers.
 3. On startup, `ChartService` verifies the chart storage bucket is reachable.
 4. Handlers authorize the caller, validate command input, and call `SongService` or `ChartService`.
 5. `SongService` and `ChartService` read or write Postgres metadata rows.

@@ -5,8 +5,8 @@ from typing import Any
 
 import pytest
 
-from song_vault.models.song import Song, SongStatus
-from song_vault.services.song_service import SongService
+from models.song import Song, SongStatus
+from services.song_service import SongService
 
 
 class FakeSession:

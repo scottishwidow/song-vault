@@ -24,14 +24,15 @@ dev = [
 ]
 
 [project.scripts]
-song-vault = "song_vault.app:main"
+song-vault = "app:main"
 
 [build-system]
 requires = ["hatchling>=1.27.0,<2.0.0"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/song_vault"]
+only-include = ["src"]
+sources = ["src"]
 
 [tool.ruff]
 target-version = "py312"

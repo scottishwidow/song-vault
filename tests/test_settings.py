@@ -1,4 +1,4 @@
-from song_vault.config.settings import Settings
+from config.settings import Settings
 
 
 def test_admin_telegram_user_ids_accepts_single_int() -> None:

@@ -3,7 +3,7 @@ import logging
 from telegram import Update
 from telegram.ext import ContextTypes
 
-from song_vault.bot.runtime import get_settings
+from bot.runtime import get_settings
 
 logger = logging.getLogger(__name__)
 

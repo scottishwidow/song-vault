@@ -4,11 +4,11 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 from telegram import BotCommand, Update
 from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
 
-from song_vault.bot.runtime import CHART_SERVICE_KEY, ENGINE_KEY, SETTINGS_KEY, SONG_SERVICE_KEY
-from song_vault.config.settings import Settings
-from song_vault.handlers.charts import build_upload_chart_handler, chart_command
-from song_vault.handlers.common import error_handler, help_command, start_command
-from song_vault.handlers.repertoire import (
+from bot.runtime import CHART_SERVICE_KEY, ENGINE_KEY, SETTINGS_KEY, SONG_SERVICE_KEY
+from config.settings import Settings
+from handlers.charts import build_upload_chart_handler, chart_command
+from handlers.common import error_handler, help_command, start_command
+from handlers.repertoire import (
     archive_song_command,
     build_add_song_handler,
     build_edit_song_handler,
@@ -16,9 +16,9 @@ from song_vault.handlers.repertoire import (
     search_songs_command,
     tags_command,
 )
-from song_vault.services.chart_service import ChartService
-from song_vault.services.song_service import SongService
-from song_vault.storage.s3_chart_storage import S3ChartStorage
+from services.chart_service import ChartService
+from services.song_service import SongService
+from storage.s3_chart_storage import S3ChartStorage
 
 logger = logging.getLogger(__name__)
 
