@@ -6,7 +6,7 @@ The MVP is finished. This document records the delivered scope of the first usab
 
 - Start and help commands
 - List active songs
-- Search songs by title, source, and tag text
+- Search songs by title, artist, and tag text
 - Guided add-song flow
 - Guided edit-song flow
 - Soft-archive command

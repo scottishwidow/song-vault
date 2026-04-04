@@ -35,7 +35,7 @@ SONG_BROWSER_STATE_KEY = "song_browser_state"
 class BrowserItem(TypedDict):
     id: int
     title: str
-    artist_or_source: str
+    artist: str
 
 
 class BrowserState(TypedDict):
@@ -311,7 +311,7 @@ async def _render_browser_page(
         f"Page {normalized_page + 1}/{total_pages}",
     ]
     for item in page_items:
-        body_lines.append(f"#{item['id']} {item['title']} | {item['artist_or_source']}")
+        body_lines.append(f"#{item['id']} {item['title']} | {item['artist']}")
     body_lines.append("Tap a song below.")
     text = "\n".join(body_lines)
     keyboard = _browser_keyboard(
@@ -479,7 +479,7 @@ def _browser_items(songs: list[Song]) -> list[BrowserItem]:
             {
                 "id": song_id,
                 "title": song.title,
-                "artist_or_source": song.artist_or_source,
+                "artist": song.artist,
             }
         )
     return items

@@ -17,7 +17,8 @@ from models.song_chart import SongChart, SongChartStatus
 from storage.chart_storage import ChartStorage, StoredChartObject
 
 MANIFEST_FILENAME = "manifest.json"
-BACKUP_MANIFEST_VERSION = 1
+BACKUP_MANIFEST_VERSION = 2
+SUPPORTED_BACKUP_MANIFEST_VERSIONS = {1, BACKUP_MANIFEST_VERSION}
 
 
 class BackupValidationError(Exception):
@@ -42,7 +43,8 @@ class BackupImportSummary:
 class _BackupSong:
     id: int
     title: str
-    artist_or_source: str
+    artist: str
+    source_url: str | None
     key: str
     capo: int | None
     time_signature: str | None
@@ -176,7 +178,8 @@ class RepertoireBackupService:
                         Song(
                             id=song.id,
                             title=song.title,
-                            artist_or_source=song.artist_or_source,
+                            artist=song.artist,
+                            source_url=song.source_url,
                             key=song.key,
                             capo=song.capo,
                             time_signature=song.time_signature,
@@ -221,7 +224,8 @@ class RepertoireBackupService:
         return {
             "id": song.id,
             "title": song.title,
-            "artist_or_source": song.artist_or_source,
+            "artist": song.artist,
+            "source_url": song.source_url,
             "key": song.key,
             "capo": song.capo,
             "time_signature": song.time_signature,
@@ -304,9 +308,10 @@ def _parse_manifest(archive: ZipFile) -> _Manifest:
         raise BackupValidationError("Backup manifest.json must contain an object at the root.")
 
     version = payload.get("version")
-    if version != BACKUP_MANIFEST_VERSION:
+    if version not in SUPPORTED_BACKUP_MANIFEST_VERSIONS:
         raise BackupValidationError(
-            f"Unsupported backup manifest version: {version!r}. Expected {BACKUP_MANIFEST_VERSION}."
+            "Unsupported backup manifest version: "
+            f"{version!r}. Expected one of {sorted(SUPPORTED_BACKUP_MANIFEST_VERSIONS)}."
         )
 
     raw_songs = payload.get("songs")
@@ -341,7 +346,8 @@ def _parse_song_row(raw_item: object) -> _BackupSong:
     return _BackupSong(
         id=_expect_int(item, "id", "song"),
         title=_expect_non_empty_str(item, "title", "song"),
-        artist_or_source=_expect_non_empty_str(item, "artist_or_source", "song"),
+        artist=_expect_song_artist(item),
+        source_url=_expect_optional_str(item, "source_url", "song"),
         key=_expect_non_empty_str(item, "key", "song"),
         capo=_expect_optional_int(item, "capo", "song"),
         time_signature=_expect_optional_str(item, "time_signature", "song"),
@@ -353,6 +359,12 @@ def _parse_song_row(raw_item: object) -> _BackupSong:
         created_at=_expect_datetime(item, "created_at", "song"),
         updated_at=_expect_datetime(item, "updated_at", "song"),
     )
+
+
+def _expect_song_artist(item: dict[str, Any]) -> str:
+    if "artist" in item:
+        return _expect_non_empty_str(item, "artist", "song")
+    return _expect_non_empty_str(item, "artist_or_source", "song")
 
 
 def _parse_chart_row(raw_item: object) -> _BackupChart:

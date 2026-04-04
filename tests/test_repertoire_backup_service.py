@@ -102,7 +102,8 @@ async def test_export_backup_contains_manifest_and_chart_files(
                 Song(
                     id=1,
                     title="Cornerstone",
-                    artist_or_source="Hillsong",
+                    artist="Hillsong",
+                    source_url="https://example.com/songs/cornerstone",
                     key="C",
                     capo=2,
                     time_signature="4/4",
@@ -166,7 +167,7 @@ async def test_import_backup_replaces_existing_data_and_deletes_old_storage(
                 Song(
                     id=1,
                     title="Old Song",
-                    artist_or_source="Source",
+                    artist="Source",
                     key="D",
                     status=SongStatus.ACTIVE,
                     created_at=now,
@@ -195,7 +196,8 @@ async def test_import_backup_replaces_existing_data_and_deletes_old_storage(
             {
                 "id": 20,
                 "title": "New Song",
-                "artist_or_source": "New Source",
+                "artist": "New Source",
+                "source_url": "https://example.com/songs/new-song",
                 "key": "E",
                 "capo": 1,
                 "time_signature": "6/8",
@@ -237,6 +239,7 @@ async def test_import_backup_replaces_existing_data_and_deletes_old_storage(
 
     assert [song.id for song in songs] == [20]
     assert songs[0].title == "New Song"
+    assert songs[0].source_url == "https://example.com/songs/new-song"
     assert songs[0].arrangement_notes == "Pad starts in chorus."
     assert [chart.id for chart in charts] == [30]
     assert charts[0].song_id == 20
@@ -260,7 +263,8 @@ async def test_import_backup_rejects_missing_chart_file(
             {
                 "id": 5,
                 "title": "Anchor",
-                "artist_or_source": "Maverick City",
+                "artist": "Maverick City",
+                "source_url": None,
                 "key": "G",
                 "capo": None,
                 "time_signature": None,
@@ -298,14 +302,60 @@ async def test_import_backup_rejects_missing_chart_file(
         assert list(await session.scalars(select(SongChart))) == []
 
 
+@pytest.mark.asyncio
+async def test_import_backup_accepts_legacy_manifest_v1_song_artist_or_source(
+    backup_fixture: tuple[
+        RepertoireBackupService,
+        async_sessionmaker[AsyncSession],
+        FakeChartStorage,
+        AsyncEngine,
+    ],
+) -> None:
+    service, session_factory, _, _ = backup_fixture
+    now = datetime.now(UTC)
+    backup_bytes = _build_backup_zip(
+        version=1,
+        songs=[
+            {
+                "id": 7,
+                "title": "Legacy Song",
+                "artist_or_source": "Legacy Artist",
+                "key": "A",
+                "capo": None,
+                "time_signature": None,
+                "tempo_bpm": None,
+                "tags": [],
+                "notes": None,
+                "arrangement_notes": None,
+                "status": "active",
+                "created_at": now.isoformat(),
+                "updated_at": now.isoformat(),
+            }
+        ],
+        charts=[],
+        chart_files={},
+    )
+
+    summary = await service.import_backup(backup_bytes)
+
+    assert summary.song_count == 1
+    assert summary.chart_count == 0
+    async with session_factory() as session:
+        songs = list(await session.scalars(select(Song)))
+    assert len(songs) == 1
+    assert songs[0].artist == "Legacy Artist"
+    assert songs[0].source_url is None
+
+
 def _build_backup_zip(
     *,
+    version: int = BACKUP_MANIFEST_VERSION,
     songs: list[dict[str, object]],
     charts: list[dict[str, object]],
     chart_files: dict[str, bytes],
 ) -> bytes:
     payload = {
-        "version": BACKUP_MANIFEST_VERSION,
+        "version": version,
         "songs": songs,
         "charts": charts,
     }
