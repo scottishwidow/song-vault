@@ -35,6 +35,7 @@ from services.song_service import (
 (
     ADD_TITLE,
     ADD_ARTIST,
+    ADD_SOURCE,
     ADD_KEY,
     ADD_CAPO,
     ADD_TIME_SIGNATURE,
@@ -42,7 +43,7 @@ from services.song_service import (
     ADD_TAGS,
     ADD_NOTES,
     ADD_ARRANGEMENT_NOTES,
-) = range(9)
+) = range(10)
 EDIT_FIELD, EDIT_VALUE = range(2)
 RESULT_MESSAGE_CHAR_LIMIT = 3500
 
@@ -61,6 +62,7 @@ class EditFieldSpec:
 
 def format_song(song: Song) -> str:
     capo_text = str(song.capo) if song.capo is not None else "-"
+    source_text = song.source_url or "-"
     time_signature_text = song.time_signature or "-"
     tag_text = ", ".join(song.tags) if song.tags else "-"
     tempo_text = str(song.tempo_bpm) if song.tempo_bpm is not None else "-"
@@ -68,7 +70,8 @@ def format_song(song: Song) -> str:
     arrangement_notes_text = song.arrangement_notes or "-"
     return (
         f"#{song.id} {song.title}\n"
-        f"Source: {song.artist_or_source}\n"
+        f"Artist: {song.artist}\n"
+        f"Source: {source_text}\n"
         f"Key: {song.key}\n"
         f"Capo: {capo_text}\n"
         f"Time signature: {time_signature_text}\n"
@@ -81,7 +84,7 @@ def format_song(song: Song) -> str:
 
 
 def format_compact_song(song: Song) -> str:
-    return f"#{song.id} {song.title} | {song.artist_or_source} | Key: {song.key}"
+    return f"#{song.id} {song.title} | {song.artist} | Key: {song.key}"
 
 
 def _truncate_text(value: str, limit: int) -> str:
@@ -224,9 +227,17 @@ def _parse_title_update(raw_value: str) -> SongUpdate:
 def _parse_artist_update(raw_value: str) -> SongUpdate:
     return _parse_required_text(
         raw_value,
-        label="Artist or source",
-        build_update=lambda value: SongUpdate(artist_or_source=value),
+        label="Artist",
+        build_update=lambda value: SongUpdate(artist=value),
     )
+
+
+def _parse_source_update(raw_value: str) -> SongUpdate:
+    if raw_value.lower() == "clear":
+        return SongUpdate(source_url=None)
+    if not raw_value:
+        raise ValueError("Source URL must be text or 'clear'.")
+    return SongUpdate(source_url=raw_value)
 
 
 def _parse_key_update(raw_value: str) -> SongUpdate:
@@ -305,6 +316,10 @@ def _format_time_signature(song: Song) -> str:
     return song.time_signature or "-"
 
 
+def _format_source(song: Song) -> str:
+    return song.source_url or "-"
+
+
 def _format_tempo(song: Song) -> str:
     return str(song.tempo_bpm) if song.tempo_bpm is not None else "-"
 
@@ -330,9 +345,15 @@ EDIT_FIELD_SPECS: dict[str, EditFieldSpec] = {
     ),
     "artist": EditFieldSpec(
         label="artist",
-        prompt="New artist or source?",
-        format_current=lambda song: song.artist_or_source,
+        prompt="New artist?",
+        format_current=lambda song: song.artist,
         parse_input=_parse_artist_update,
+    ),
+    "source": EditFieldSpec(
+        label="source URL",
+        prompt="New source URL? Use text or 'clear'.",
+        format_current=_format_source,
+        parse_input=_parse_source_update,
     ),
     "key": EditFieldSpec(
         label="key",
@@ -532,7 +553,7 @@ async def add_song_title(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     _user_state(context)[PENDING_SONG_KEY] = {"title": _message_text(update)}
     if update.effective_message is not None:
         await update.effective_message.reply_text(
-            "Artist or source?",
+            "Artist?",
             reply_markup=cancel_markup(update),
         )
     return ADD_ARTIST
@@ -540,7 +561,19 @@ async def add_song_title(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
 async def add_song_artist(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     payload = _pending_song(context)
-    payload["artist_or_source"] = _message_text(update)
+    payload["artist"] = _message_text(update)
+    if update.effective_message is not None:
+        await update.effective_message.reply_text(
+            "Source URL? Send text or 'skip'.",
+            reply_markup=skip_cancel_markup(update),
+        )
+    return ADD_SOURCE
+
+
+async def add_song_source(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    payload = _pending_song(context)
+    text = _message_text(update)
+    payload["source_url"] = None if text.lower() == "skip" else text
     if update.effective_message is not None:
         await update.effective_message.reply_text(
             "Key?",
@@ -654,7 +687,8 @@ async def add_song_arrangement_notes(update: Update, context: ContextTypes.DEFAU
         song = await service.create_song(
             SongCreate(
                 title=str(payload["title"]),
-                artist_or_source=str(payload["artist_or_source"]),
+                artist=str(payload["artist"]),
+                source_url=cast(str | None, payload.get("source_url")),
                 key=str(payload["key"]),
                 capo=cast(int | None, payload.get("capo")),
                 time_signature=cast(str | None, payload.get("time_signature")),
@@ -891,6 +925,7 @@ def build_add_song_handler() -> ConversationHandler:
         states={
             ADD_TITLE: [_text_step(add_song_title)],
             ADD_ARTIST: [_text_step(add_song_artist)],
+            ADD_SOURCE: [_text_step(add_song_source)],
             ADD_KEY: [_text_step(add_song_key)],
             ADD_CAPO: [_text_step(add_song_capo)],
             ADD_TIME_SIGNATURE: [_text_step(add_song_time_signature)],

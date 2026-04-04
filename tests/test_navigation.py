@@ -18,11 +18,11 @@ def build_song(
     *,
     song_id: int = 5,
     title: str = "Amazing Grace",
-    artist_or_source: str = "Traditional",
+    artist: str = "Traditional",
 ) -> Song:
     song = Song(
         title=title,
-        artist_or_source=artist_or_source,
+        artist=artist,
         key="G",
         status=SongStatus.ACTIVE,
     )
@@ -187,7 +187,7 @@ async def test_song_detail_for_non_admin_hides_admin_action_buttons() -> None:
     context.user_data[SONG_BROWSER_STATE_KEY] = {
         "mode": "browse",
         "title": "Active songs",
-        "items": [{"id": 5, "title": "Amazing Grace", "artist_or_source": "Traditional"}],
+        "items": [{"id": 5, "title": "Amazing Grace", "artist": "Traditional"}],
     }
     update, query = build_callback_update(data="song:detail:5:0", user_id=2)
 
@@ -212,7 +212,7 @@ async def test_song_detail_for_admin_shows_admin_action_buttons() -> None:
     context.user_data[SONG_BROWSER_STATE_KEY] = {
         "mode": "browse",
         "title": "Active songs",
-        "items": [{"id": 5, "title": "Amazing Grace", "artist_or_source": "Traditional"}],
+        "items": [{"id": 5, "title": "Amazing Grace", "artist": "Traditional"}],
     }
     update, query = build_callback_update(data="song:detail:5:0", user_id=1)
 

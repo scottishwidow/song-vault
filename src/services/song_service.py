@@ -24,8 +24,9 @@ MISSING: Final = _MissingType()
 @dataclass(slots=True)
 class SongCreate:
     title: str
-    artist_or_source: str
+    artist: str
     key: str
+    source_url: str | None = None
     capo: int | None = None
     time_signature: str | None = None
     tempo_bpm: int | None = None
@@ -37,7 +38,8 @@ class SongCreate:
 @dataclass(slots=True)
 class SongUpdate:
     title: str | _MissingType = MISSING
-    artist_or_source: str | _MissingType = MISSING
+    artist: str | _MissingType = MISSING
+    source_url: str | None | _MissingType = MISSING
     key: str | _MissingType = MISSING
     capo: int | None | _MissingType = MISSING
     time_signature: str | None | _MissingType = MISSING
@@ -51,7 +53,8 @@ class SongUpdate:
         changes: dict[str, object] = {}
         for field_name in (
             "title",
-            "artist_or_source",
+            "artist",
+            "source_url",
             "key",
             "capo",
             "time_signature",
@@ -124,7 +127,7 @@ class SongService:
         async with self._session_factory() as session:
             statement = select(Song).where(
                 func.lower(Song.title).contains(term)
-                | func.lower(Song.artist_or_source).contains(term)
+                | func.lower(Song.artist).contains(term)
                 | func.lower(sql_cast(Song.tags, String)).contains(term)
             )
             if not include_archived:
@@ -143,7 +146,8 @@ class SongService:
     async def create_song(self, payload: SongCreate) -> Song:
         song = Song(
             title=_clean_required(payload.title, "title"),
-            artist_or_source=_clean_required(payload.artist_or_source, "artist_or_source"),
+            artist=_clean_required(payload.artist, "artist"),
+            source_url=_clean_optional(payload.source_url),
             key=_clean_required(payload.key, "key"),
             capo=_clean_capo(payload.capo),
             time_signature=_clean_optional(payload.time_signature),
@@ -172,9 +176,9 @@ class SongService:
 
             for field_name, raw_value in updates.items():
                 value = raw_value
-                if field_name in {"title", "artist_or_source", "key"}:
+                if field_name in {"title", "artist", "key"}:
                     value = _clean_required(cast(str, raw_value), field_name)
-                elif field_name in {"notes", "time_signature", "arrangement_notes"}:
+                elif field_name in {"source_url", "notes", "time_signature", "arrangement_notes"}:
                     value = _clean_optional(cast(str | None, raw_value))
                 elif field_name == "capo":
                     value = _clean_capo(cast(int | None, raw_value))

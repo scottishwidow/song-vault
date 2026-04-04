@@ -92,7 +92,8 @@ def build_song(
     *,
     song_id: int = 5,
     title: str = "Amazing Grace",
-    artist_or_source: str = "Traditional",
+    artist: str = "Traditional",
+    source_url: str | None = None,
     key: str = "G",
     capo: int | None = 1,
     time_signature: str | None = "3/4",
@@ -103,7 +104,8 @@ def build_song(
 ) -> Song:
     song = Song(
         title=title,
-        artist_or_source=artist_or_source,
+        artist=artist,
+        source_url=source_url,
         key=key,
         capo=capo,
         time_signature=time_signature,
@@ -242,7 +244,8 @@ async def test_list_songs_command_sends_detailed_song_cards_when_result_fits() -
 
     reply.assert_awaited_once()
     message = reply.await_args.args[0]
-    assert "Source: Traditional" in message
+    assert "Artist: Traditional" in message
+    assert "Source: -" in message
     assert "Notes: Slow intro." in message
     assert "Capo: 1" in message
     assert "Time signature: 3/4" in message
@@ -261,7 +264,8 @@ async def test_search_command_sends_detailed_song_cards_when_result_fits() -> No
 
     reply.assert_awaited_once()
     message = reply.await_args.args[0]
-    assert "Source: Traditional" in message
+    assert "Artist: Traditional" in message
+    assert "Source: -" in message
     assert "Notes: Slow intro." in message
     assert "Capo: 1" in message
     assert "Time signature: 3/4" in message
@@ -309,7 +313,7 @@ async def test_search_command_splits_compact_summary_across_multiple_messages() 
         build_song(
             song_id=index,
             title=f"Song {index}",
-            artist_or_source=f"Source {index}",
+            artist=f"Source {index}",
             key="C",
             notes="ok",
         )
@@ -404,6 +408,7 @@ async def test_edit_song_start_shows_editable_field_previews() -> None:
     assert "Current editable fields:" in message
     assert "title: Amazing Grace" in message
     assert "artist: Traditional" in message
+    assert "source: -" in message
     assert "capo: 1" in message
     assert "time_signature: 3/4" in message
     assert "tempo: 72" in message
@@ -433,6 +438,24 @@ async def test_edit_song_field_shows_prompt_with_current_value() -> None:
 
 
 @pytest.mark.asyncio
+async def test_edit_song_field_accepts_source_field() -> None:
+    update, reply = build_update()
+    song = build_song(source_url="https://example.org/source")
+    song_service = SimpleNamespace(get_song=AsyncMock(return_value=song))
+    context = build_context(song_service=song_service)
+    context.user_data[EDIT_SONG_ID_KEY] = song.id
+    update.effective_message.text = "source"
+
+    state = await edit_song_field(update, context)
+
+    assert state == EDIT_VALUE
+    message = reply.await_args.args[0]
+    assert "New source URL? Use text or 'clear'." in message
+    assert "Current source URL: https://example.org/source" in message
+    assert reply.await_args.kwargs["reply_markup"].keyboard[0][0].text == "Cancel"
+
+
+@pytest.mark.asyncio
 async def test_edit_song_field_rejects_unknown_field() -> None:
     update, reply = build_update()
     context = build_context()
@@ -442,7 +465,7 @@ async def test_edit_song_field_rejects_unknown_field() -> None:
 
     assert state == EDIT_FIELD
     assert reply.await_args.args[0] == (
-        "Invalid field. Choose one of: title, artist, key, capo, "
+        "Invalid field. Choose one of: title, artist, source, key, capo, "
         "time_signature, tempo, tags, notes, arrangement_notes."
     )
     assert reply.await_args.kwargs["reply_markup"].keyboard[0][0].text == "Cancel"
@@ -496,6 +519,7 @@ async def test_edit_song_value_retries_on_blank_required_text() -> None:
 @pytest.mark.parametrize(
     ("field_name", "expected_error"),
     [
+        ("source", "Source URL must be text or 'clear'."),
         ("time_signature", "Time signature must be text or 'clear'."),
         ("tags", "Tags must be comma-separated values or 'clear'."),
         ("notes", "Notes must be text or 'clear'."),

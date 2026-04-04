@@ -329,7 +329,7 @@ def _chart_caption(chart_file: ChartFile) -> str:
     if chart_file.chart_key:
         lines.append(f"Chart key: {chart_file.chart_key}")
     if chart_file.source_url:
-        lines.append(f"Source: {chart_file.source_url}")
+        lines.append(f"Chart source URL: {chart_file.source_url}")
     return "\n".join(lines)
 
 

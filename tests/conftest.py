@@ -56,7 +56,7 @@ class FakeSession:
                 song
                 for song in songs
                 if lowered in song.title.lower()
-                or lowered in song.artist_or_source.lower()
+                or lowered in song.artist.lower()
                 or any(lowered in tag.lower() for tag in song.tags)
             ]
 

@@ -132,10 +132,11 @@ async def test_migrations_create_expected_schema(postgres_engine: AsyncEngine) -
         )
         active_chart_index = index_result.scalar_one()
 
-    assert song_columns == [
+    assert set(song_columns) == {
         "id",
         "title",
-        "artist_or_source",
+        "artist",
+        "source_url",
         "key",
         "tempo_bpm",
         "tags",
@@ -146,7 +147,7 @@ async def test_migrations_create_expected_schema(postgres_engine: AsyncEngine) -
         "capo",
         "time_signature",
         "arrangement_notes",
-    ]
+    }
     assert chart_columns == [
         "id",
         "song_id",
@@ -175,7 +176,8 @@ async def test_song_service_persists_in_postgres(
     created = await song_service.create_song(
         SongCreate(
             title="King of Kings",
-            artist_or_source="Hillsong Worship",
+            artist="Hillsong Worship",
+            source_url="https://example.org/king-of-kings",
             key="A",
             capo=2,
             time_signature="4/4",
@@ -189,7 +191,7 @@ async def test_song_service_persists_in_postgres(
     second = await song_service.create_song(
         SongCreate(
             title="No Longer Slaves",
-            artist_or_source="Bethel Music",
+            artist="Bethel Music",
             key="G",
             tags=["response"],
         )
@@ -219,7 +221,7 @@ async def test_song_chart_active_constraint_is_enforced(
     song = await song_service.create_song(
         SongCreate(
             title="Holy Forever",
-            artist_or_source="Bethel Music",
+            artist="Bethel Music",
             key="E",
         )
     )

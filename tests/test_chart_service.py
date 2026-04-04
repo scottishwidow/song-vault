@@ -104,7 +104,7 @@ class FakeSessionFactory:
     def add_song(self, song_id: int, *, title: str) -> Song:
         song = Song(
             title=title,
-            artist_or_source="source",
+            artist="source",
             key="C",
             tempo_bpm=None,
             tags=[],

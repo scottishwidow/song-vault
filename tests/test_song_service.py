@@ -9,7 +9,8 @@ async def test_song_service_create_list_search_update_and_archive(song_service) 
     created = await song_service.create_song(
         SongCreate(
             title="Cornerstone",
-            artist_or_source="Hillsong",
+            artist="Hillsong",
+            source_url="https://example.org/cornerstone",
             key="C",
             capo=3,
             time_signature="6/8",
@@ -25,6 +26,7 @@ async def test_song_service_create_list_search_update_and_archive(song_service) 
 
     search_results = await song_service.search_songs("worship")
     assert [song.id for song in search_results] == [created.id]
+    assert await song_service.search_songs("example.org") == []
 
     updated = await song_service.update_song(
         created.id,
@@ -55,7 +57,7 @@ async def test_song_service_lists_unique_tags(song_service) -> None:
     await song_service.create_song(
         SongCreate(
             title="Build My Life",
-            artist_or_source="Housefires",
+            artist="Housefires",
             key="D",
             tags=["Worship", "Prayer"],
         )
@@ -63,7 +65,7 @@ async def test_song_service_lists_unique_tags(song_service) -> None:
     await song_service.create_song(
         SongCreate(
             title="Gratitude",
-            artist_or_source="Brandon Lake",
+            artist="Brandon Lake",
             key="G",
             tags=["worship", "Response"],
         )
