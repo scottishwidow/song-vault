@@ -33,14 +33,16 @@ async def export_backup_command(update: Update, context: ContextTypes.DEFAULT_TY
         archive = await service.export_backup()
     except ChartStorageError:
         await update.effective_message.reply_text(
-            "Backup export failed while reading chart binaries."
+            "Не вдалося експортувати резервну копію під час читання файлів акордів."
         )
         return
 
     await update.effective_message.reply_document(
         document=InputFile(BytesIO(archive.content), filename=archive.filename),
         caption=(
-            f"Backup export complete.\nSongs: {archive.song_count}\nCharts: {archive.chart_count}"
+            "Експорт резервної копії завершено.\n"
+            f"Пісень: {archive.song_count}\n"
+            f"Акордів: {archive.chart_count}"
         ),
     )
 
@@ -53,7 +55,7 @@ async def import_backup_start(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     _user_state(context)[IMPORT_BACKUP_STATE_KEY] = {}
     await update.effective_message.reply_text(
-        "Send a .zip backup file to import, or tap Cancel.",
+        "Надішліть .zip файл резервної копії для імпорту або натисніть «Скасувати».",
         reply_markup=cancel_markup(update),
     )
     return IMPORT_BACKUP_UPLOAD
@@ -76,10 +78,12 @@ async def import_backup_file(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
     document = update.effective_message.document
     if document is None:
-        await update.effective_message.reply_text("Please send a .zip document file.")
+        await update.effective_message.reply_text("Надішліть .zip файл документом.")
         return IMPORT_BACKUP_UPLOAD
     if not _looks_like_zip(document.file_name, document.mime_type):
-        await update.effective_message.reply_text("Backup import expects a .zip document file.")
+        await update.effective_message.reply_text(
+            "Імпорт резервної копії очікує .zip файл документом."
+        )
         return IMPORT_BACKUP_UPLOAD
 
     telegram_file = await document.get_file()
@@ -89,15 +93,15 @@ async def import_backup_file(update: Update, context: ContextTypes.DEFAULT_TYPE)
     try:
         summary = await service.import_backup(content)
     except (BackupValidationError, ChartStorageError, ValueError) as error:
-        await update.effective_message.reply_text(f"Backup import failed: {error}")
+        await update.effective_message.reply_text(f"Помилка імпорту резервної копії: {error}")
         return ConversationHandler.END
 
     _user_state(context).pop(IMPORT_BACKUP_STATE_KEY, None)
     await update.effective_message.reply_text(
         (
-            "Backup import complete.\n"
-            f"Songs restored: {summary.song_count}\n"
-            f"Charts restored: {summary.chart_count}"
+            "Імпорт резервної копії завершено.\n"
+            f"Відновлено пісень: {summary.song_count}\n"
+            f"Відновлено акордів: {summary.chart_count}"
         ),
         reply_markup=home_menu_markup(update, context) or ReplyKeyboardRemove(),
     )
@@ -106,7 +110,7 @@ async def import_backup_file(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
 async def cancel_import_backup(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     _user_state(context).pop(IMPORT_BACKUP_STATE_KEY, None)
-    await send_home_screen(update, context, prefix="Cancelled.")
+    await send_home_screen(update, context, prefix="Скасовано.")
     return ConversationHandler.END
 
 

@@ -8,17 +8,17 @@ from telegram.ext import ContextTypes
 
 from bot.runtime import get_settings
 
-MENU_START = "🏠 Start"
-MENU_SONGS = "🎵 Songs"
-MENU_SEARCH = "🔎 Search"
-MENU_TAGS = "🏷️ Tags"
-MENU_HELP = "❓ Help"
-MENU_ADD_SONG = "➕ Add Song"
-MENU_UPLOAD_CHART = "🖼️ Upload Chart"
-MENU_BACKUP = "💾 Backup"
+MENU_START = "🏠 Головна"
+MENU_SONGS = "🎵 Пісні"
+MENU_SEARCH = "🔎 Пошук"
+MENU_TAGS = "🏷️ Теги"
+MENU_HELP = "❓ Допомога"
+MENU_ADD_SONG = "➕ Додати пісню"
+MENU_UPLOAD_CHART = "🖼️ Завантажити акорди"
+MENU_BACKUP = "💾 Резервна копія"
 
-BUTTON_SKIP = "Skip"
-BUTTON_CANCEL = "Cancel"
+BUTTON_SKIP = "Пропустити"
+BUTTON_CANCEL = "Скасувати"
 CANCEL_BUTTON_PATTERN = re.compile(rf"^{re.escape(BUTTON_CANCEL)}$")
 
 MAIN_MENU_BUTTONS = {

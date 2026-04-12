@@ -37,7 +37,7 @@ from handlers.repertoire import (
     list_songs_command,
     search_songs_command,
 )
-from handlers.ui import MENU_START
+from handlers.ui import BUTTON_CANCEL, MENU_START
 from models.song import Song, SongStatus
 from services.chart_service import SongChartNotFoundError
 from services.repertoire_backup_service import BackupArchive
@@ -145,7 +145,7 @@ async def test_ensure_admin_rejects_non_admin() -> None:
     allowed = await ensure_admin(update, context)
 
     assert allowed is False
-    reply.assert_awaited_once_with("Admin access is required for this action.")
+    reply.assert_awaited_once_with("Для цієї дії потрібні права адміністратора.")
 
 
 def test_add_song_conversation_filters_ignore_edited_messages() -> None:
@@ -203,7 +203,7 @@ def test_import_backup_conversation_filters_ignore_edited_messages() -> None:
 )
 def test_conversation_state_handlers_do_not_consume_cancel_button(handler_factory: object) -> None:
     handler = handler_factory()
-    cancel_update = build_telegram_update(edited=False, text="Cancel")
+    cancel_update = build_telegram_update(edited=False, text=BUTTON_CANCEL)
 
     for state_handlers in handler.states.values():
         for state_handler in state_handlers:
@@ -219,7 +219,7 @@ async def test_search_command_requires_query() -> None:
 
     await search_songs_command(update, context)
 
-    reply.assert_awaited_once_with("Usage: /search <text>")
+    reply.assert_awaited_once_with("Використання: /search <запит>")
 
 
 @pytest.mark.asyncio
@@ -230,7 +230,7 @@ async def test_list_songs_command_reports_empty_repertoire() -> None:
 
     await list_songs_command(update, context)
 
-    reply.assert_awaited_once_with("No active songs yet.")
+    reply.assert_awaited_once_with("Ще немає активних пісень.")
 
 
 @pytest.mark.asyncio
@@ -244,13 +244,13 @@ async def test_list_songs_command_sends_detailed_song_cards_when_result_fits() -
 
     reply.assert_awaited_once()
     message = reply.await_args.args[0]
-    assert "Artist: Traditional" in message
-    assert "Source: -" in message
-    assert "Notes: Slow intro." in message
-    assert "Capo: 1" in message
-    assert "Time signature: 3/4" in message
-    assert "Arrangement notes: Lift dynamics in verse two." in message
-    assert not message.startswith("Active songs (")
+    assert "Виконавець: Traditional" in message
+    assert "Джерело: -" in message
+    assert "Нотатки: Slow intro." in message
+    assert "Каподастр: 1" in message
+    assert "Розмір: 3/4" in message
+    assert "Нотатки аранжування: Lift dynamics in verse two." in message
+    assert not message.startswith("Активні пісні (")
 
 
 @pytest.mark.asyncio
@@ -264,12 +264,12 @@ async def test_search_command_sends_detailed_song_cards_when_result_fits() -> No
 
     reply.assert_awaited_once()
     message = reply.await_args.args[0]
-    assert "Artist: Traditional" in message
-    assert "Source: -" in message
-    assert "Notes: Slow intro." in message
-    assert "Capo: 1" in message
-    assert "Time signature: 3/4" in message
-    assert not message.startswith('Matches for "grace" (')
+    assert "Виконавець: Traditional" in message
+    assert "Джерело: -" in message
+    assert "Нотатки: Slow intro." in message
+    assert "Каподастр: 1" in message
+    assert "Розмір: 3/4" in message
+    assert not message.startswith('Результати для "grace" (')
 
 
 @pytest.mark.asyncio
@@ -283,9 +283,9 @@ async def test_list_songs_command_falls_back_to_compact_summary_when_output_is_l
 
     reply.assert_awaited_once()
     message = reply.await_args.args[0]
-    assert message.startswith("Active songs (1):")
-    assert "#5 Amazing Grace | Traditional | Key: G" in message
-    assert "Notes:" not in message
+    assert message.startswith("Активні пісні (1):")
+    assert "#5 Amazing Grace | Traditional | Тональність: G" in message
+    assert "Нотатки:" not in message
     assert len(message) <= RESULT_MESSAGE_CHAR_LIMIT
 
 
@@ -300,9 +300,9 @@ async def test_search_command_falls_back_to_compact_summary_when_output_is_long(
 
     reply.assert_awaited_once()
     message = reply.await_args.args[0]
-    assert message.startswith('Matches for "grace" (1):')
-    assert "#5 Amazing Grace | Traditional | Key: G" in message
-    assert "Notes:" not in message
+    assert message.startswith('Результати для "grace" (1):')
+    assert "#5 Amazing Grace | Traditional | Тональність: G" in message
+    assert "Нотатки:" not in message
     assert len(message) <= RESULT_MESSAGE_CHAR_LIMIT
 
 
@@ -326,9 +326,11 @@ async def test_search_command_splits_compact_summary_across_multiple_messages() 
 
     assert reply.await_count > 1
     messages = [call.args[0] for call in reply.await_args_list]
-    assert messages[0].startswith('Matches for "setlist" (220):')
-    assert messages[1].startswith(f'Matches for "setlist" (220) (cont. 2/{len(messages)}):')
-    assert "#1 Song 1 | Source 1 | Key: C" in messages[0]
+    assert messages[0].startswith('Результати для "setlist" (220):')
+    assert messages[1].startswith(
+        f'Результати для "setlist" (220) (продовження 2/{len(messages)}):'
+    )
+    assert "#1 Song 1 | Source 1 | Тональність: C" in messages[0]
     assert all(len(message) <= RESULT_MESSAGE_CHAR_LIMIT for message in messages)
 
 
@@ -339,7 +341,7 @@ async def test_chart_command_requires_song_id() -> None:
 
     await chart_command(update, context)
 
-    reply.assert_awaited_once_with("Usage: /chart <song_id>")
+    reply.assert_awaited_once_with("Використання: /chart <id_пісні>")
 
 
 @pytest.mark.asyncio
@@ -352,7 +354,7 @@ async def test_chart_command_reports_missing_chart() -> None:
 
     await chart_command(update, context)
 
-    reply.assert_awaited_once_with("No chart uploaded yet for song #7.")
+    reply.assert_awaited_once_with("Для пісні #7 ще не завантажено акорди.")
 
 
 @pytest.mark.asyncio
@@ -364,7 +366,7 @@ async def test_upload_chart_start_requires_admin() -> None:
     state = await upload_chart_start(update, context)
 
     assert state == -1
-    reply.assert_awaited_once_with("Admin access is required for this action.")
+    reply.assert_awaited_once_with("Для цієї дії потрібні права адміністратора.")
     chart_service.assert_song_exists.assert_not_awaited()
 
 
@@ -377,21 +379,21 @@ async def test_upload_chart_start_requires_song_id_arg() -> None:
     state = await upload_chart_start(update, context)
 
     assert state == -1
-    reply.assert_awaited_once_with("Usage: /uploadchart <song_id>")
+    reply.assert_awaited_once_with("Використання: /uploadchart <id_пісні>")
 
 
 @pytest.mark.asyncio
 async def test_upload_chart_start_reports_missing_song() -> None:
     update, reply = build_update()
     chart_service = SimpleNamespace(
-        assert_song_exists=AsyncMock(side_effect=SongNotFoundError("Song 10 was not found."))
+        assert_song_exists=AsyncMock(side_effect=SongNotFoundError("Пісню 10 не знайдено."))
     )
     context = build_context(args=["10"], chart_service=chart_service)
 
     state = await upload_chart_start(update, context)
 
     assert state == -1
-    reply.assert_awaited_once_with("Song 10 was not found.")
+    reply.assert_awaited_once_with("Пісню 10 не знайдено.")
 
 
 @pytest.mark.asyncio
@@ -405,18 +407,18 @@ async def test_edit_song_start_shows_editable_field_previews() -> None:
 
     assert state == EDIT_FIELD
     message = reply.await_args.args[0]
-    assert "Current editable fields:" in message
-    assert "title: Amazing Grace" in message
-    assert "artist: Traditional" in message
-    assert "source: -" in message
-    assert "capo: 1" in message
-    assert "time_signature: 3/4" in message
-    assert "tempo: 72" in message
-    assert "tags: hymn, classic" in message
-    assert "notes: Slow intro." in message
-    assert "arrangement_notes: Lift dynamics in verse two." in message
-    assert "Tap Cancel to stop." in message
-    assert reply.await_args.kwargs["reply_markup"].keyboard[0][0].text == "Cancel"
+    assert "Поточні поля для редагування:" in message
+    assert "назва: Amazing Grace" in message
+    assert "виконавець: Traditional" in message
+    assert "джерело: -" in message
+    assert "каподастр: 1" in message
+    assert "розмір: 3/4" in message
+    assert "темп: 72" in message
+    assert "теги: hymn, classic" in message
+    assert "нотатки: Slow intro." in message
+    assert "нотатки аранжування: Lift dynamics in verse two." in message
+    assert "Натисніть «Скасувати», щоб зупинити." in message
+    assert reply.await_args.kwargs["reply_markup"].keyboard[0][0].text == BUTTON_CANCEL
 
 
 @pytest.mark.asyncio
@@ -426,15 +428,15 @@ async def test_edit_song_field_shows_prompt_with_current_value() -> None:
     song_service = SimpleNamespace(get_song=AsyncMock(return_value=song))
     context = build_context(song_service=song_service)
     context.user_data[EDIT_SONG_ID_KEY] = song.id
-    update.effective_message.text = "tempo"
+    update.effective_message.text = "темп"
 
     state = await edit_song_field(update, context)
 
     assert state == EDIT_VALUE
     message = reply.await_args.args[0]
-    assert "New tempo BPM? Use a number or 'clear'." in message
-    assert "Current tempo: 72" in message
-    assert reply.await_args.kwargs["reply_markup"].keyboard[0][0].text == "Cancel"
+    assert "Новий темп (BPM)? Надішліть число або «очистити»." in message
+    assert "Поточне значення поля «темп»: 72" in message
+    assert reply.await_args.kwargs["reply_markup"].keyboard[0][0].text == BUTTON_CANCEL
 
 
 @pytest.mark.asyncio
@@ -444,15 +446,15 @@ async def test_edit_song_field_accepts_source_field() -> None:
     song_service = SimpleNamespace(get_song=AsyncMock(return_value=song))
     context = build_context(song_service=song_service)
     context.user_data[EDIT_SONG_ID_KEY] = song.id
-    update.effective_message.text = "source"
+    update.effective_message.text = "джерело"
 
     state = await edit_song_field(update, context)
 
     assert state == EDIT_VALUE
     message = reply.await_args.args[0]
-    assert "New source URL? Use text or 'clear'." in message
-    assert "Current source URL: https://example.org/source" in message
-    assert reply.await_args.kwargs["reply_markup"].keyboard[0][0].text == "Cancel"
+    assert "Нове джерело? Надішліть текст або «очистити»." in message
+    assert "Поточне значення поля «джерело»: https://example.org/source" in message
+    assert reply.await_args.kwargs["reply_markup"].keyboard[0][0].text == BUTTON_CANCEL
 
 
 @pytest.mark.asyncio
@@ -465,10 +467,10 @@ async def test_edit_song_field_rejects_unknown_field() -> None:
 
     assert state == EDIT_FIELD
     assert reply.await_args.args[0] == (
-        "Invalid field. Choose one of: title, artist, source, key, capo, "
-        "time_signature, tempo, tags, notes, arrangement_notes."
+        "Невірне поле. Оберіть одне з: назва, виконавець, джерело, тональність, "
+        "каподастр, розмір, темп, теги, нотатки, нотатки аранжування."
     )
-    assert reply.await_args.kwargs["reply_markup"].keyboard[0][0].text == "Cancel"
+    assert reply.await_args.kwargs["reply_markup"].keyboard[0][0].text == BUTTON_CANCEL
 
 
 @pytest.mark.asyncio
@@ -488,8 +490,8 @@ async def test_edit_song_value_retries_on_invalid_tempo() -> None:
 
     assert state == EDIT_VALUE
     message = reply.await_args.args[0]
-    assert "Tempo must be a number or 'clear'." in message
-    assert "Current tempo: 72" in message
+    assert "Темп має бути числом або «очистити»." in message
+    assert "Поточне значення поля «темп»: 72" in message
     song_service.update_song.assert_not_awaited()
 
 
@@ -510,8 +512,8 @@ async def test_edit_song_value_retries_on_blank_required_text() -> None:
 
     assert state == EDIT_VALUE
     message = reply.await_args.args[0]
-    assert "Title cannot be empty. Send a non-empty value." in message
-    assert "Current title: Amazing Grace" in message
+    assert "Поле «назва» не може бути порожнім. Надішліть непорожнє значення." in message
+    assert "Поточне значення поля «назва»: Amazing Grace" in message
     song_service.update_song.assert_not_awaited()
 
 
@@ -519,11 +521,11 @@ async def test_edit_song_value_retries_on_blank_required_text() -> None:
 @pytest.mark.parametrize(
     ("field_name", "expected_error"),
     [
-        ("source", "Source URL must be text or 'clear'."),
-        ("time_signature", "Time signature must be text or 'clear'."),
-        ("tags", "Tags must be comma-separated values or 'clear'."),
-        ("notes", "Notes must be text or 'clear'."),
-        ("arrangement_notes", "Arrangement notes must be text or 'clear'."),
+        ("source", "Джерело має бути текстом або «очистити»."),
+        ("time_signature", "Розмір має бути текстом або «очистити»."),
+        ("tags", "Теги мають бути значеннями через кому або «очистити»."),
+        ("notes", "Нотатки мають бути текстом або «очистити»."),
+        ("arrangement_notes", "Нотатки аранжування мають бути текстом або «очистити»."),
     ],
 )
 async def test_edit_song_value_retries_on_blank_optional_field_input(
@@ -568,7 +570,7 @@ async def test_edit_song_value_updates_song_and_clears_state() -> None:
     assert EDIT_FIELD_KEY not in context.user_data
     update_payload = song_service.update_song.await_args.args[1]
     assert update_payload.values() == {"title": "Amazing Grace (Acoustic)"}
-    assert "Updated song:" in reply.await_args.args[0]
+    assert "Пісню оновлено:" in reply.await_args.args[0]
 
 
 @pytest.mark.asyncio
@@ -579,7 +581,7 @@ async def test_export_backup_command_requires_admin() -> None:
 
     await export_backup_command(update, context)
 
-    reply.assert_awaited_once_with("Admin access is required for this action.")
+    reply.assert_awaited_once_with("Для цієї дії потрібні права адміністратора.")
     backup_service.export_backup.assert_not_awaited()
 
 
@@ -605,8 +607,8 @@ async def test_export_backup_command_sends_archive_document() -> None:
     sent_file = args["document"]
     assert sent_file.filename == "backup.zip"
     assert sent_file.input_file_content == b"zip-data"
-    assert "Songs: 2" in args["caption"]
-    assert "Charts: 1" in args["caption"]
+    assert "Пісень: 2" in args["caption"]
+    assert "Акордів: 1" in args["caption"]
 
 
 @pytest.mark.asyncio
@@ -617,8 +619,10 @@ async def test_import_backup_start_prompts_for_zip_file() -> None:
     state = await import_backup_start(update, context)
 
     assert state == IMPORT_BACKUP_UPLOAD
-    assert reply.await_args.args[0] == "Send a .zip backup file to import, or tap Cancel."
-    assert reply.await_args.kwargs["reply_markup"].keyboard[0][0].text == "Cancel"
+    assert reply.await_args.args[0] == (
+        "Надішліть .zip файл резервної копії для імпорту або натисніть «Скасувати»."
+    )
+    assert reply.await_args.kwargs["reply_markup"].keyboard[0][0].text == BUTTON_CANCEL
 
 
 @pytest.mark.asyncio
@@ -633,7 +637,7 @@ async def test_import_backup_file_rejects_non_zip_document() -> None:
     state = await import_backup_file(update, context)
 
     assert state == IMPORT_BACKUP_UPLOAD
-    reply.assert_awaited_once_with("Backup import expects a .zip document file.")
+    reply.assert_awaited_once_with("Імпорт резервної копії очікує .zip файл документом.")
 
 
 @pytest.mark.asyncio
@@ -655,8 +659,8 @@ async def test_import_backup_file_runs_restore_and_reports_success() -> None:
     assert state == -1
     backup_service.import_backup.assert_awaited_once_with(b"zip")
     message = reply.await_args.args[0]
-    assert "Songs restored: 3" in message
-    assert "Charts restored: 2" in message
+    assert "Відновлено пісень: 3" in message
+    assert "Відновлено акордів: 2" in message
 
 
 @pytest.mark.asyncio
@@ -672,7 +676,7 @@ async def test_cancel_command_returns_home_menu() -> None:
     assert state == -1
     assert context.user_data == {}
     assert reply.await_args.args[0] == (
-        "Cancelled.\nSong Vault is ready.\nUse the menu buttons below."
+        "Скасовано.\nБот готовий.\nКористуйтеся кнопками меню нижче."
     )
     assert reply.await_args.kwargs["reply_markup"].keyboard[0][0].text == MENU_START
 
@@ -688,7 +692,7 @@ async def test_cancel_upload_chart_returns_home_menu() -> None:
     assert state == -1
     assert context.user_data == {}
     assert reply.await_args.args[0] == (
-        "Cancelled.\nSong Vault is ready.\nUse the menu buttons below."
+        "Скасовано.\nБот готовий.\nКористуйтеся кнопками меню нижче."
     )
     assert reply.await_args.kwargs["reply_markup"].keyboard[0][0].text == MENU_START
 
@@ -704,6 +708,6 @@ async def test_cancel_import_backup_returns_home_menu() -> None:
     assert state == -1
     assert context.user_data == {}
     assert reply.await_args.args[0] == (
-        "Cancelled.\nSong Vault is ready.\nUse the menu buttons below."
+        "Скасовано.\nБот готовий.\nКористуйтеся кнопками меню нижче."
     )
     assert reply.await_args.kwargs["reply_markup"].keyboard[0][0].text == MENU_START

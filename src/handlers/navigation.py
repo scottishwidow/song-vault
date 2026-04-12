@@ -61,7 +61,10 @@ async def menu_text_router(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         return
     if text == MENU_SEARCH:
         state[SEARCH_PENDING_KEY] = True
-        await message.reply_text("Send search text, or Cancel.", reply_markup=cancel_markup(update))
+        await message.reply_text(
+            "Надішліть текст для пошуку або натисніть «Скасувати».",
+            reply_markup=cancel_markup(update),
+        )
         return
     if text == MENU_TAGS:
         _clear_search_pending(context)
@@ -74,14 +77,14 @@ async def menu_text_router(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     if text == MENU_UPLOAD_CHART:
         _clear_search_pending(context)
         if not is_admin_user(update, context):
-            await message.reply_text("Admin access is required for this action.")
+            await message.reply_text("Для цієї дії потрібні права адміністратора.")
             return
         await show_upload_target_picker(update, context)
         return
     if text == MENU_BACKUP:
         _clear_search_pending(context)
         if not is_admin_user(update, context):
-            await message.reply_text("Admin access is required for this action.")
+            await message.reply_text("Для цієї дії потрібні права адміністратора.")
             return
         await show_backup_menu(update, context)
         return
@@ -89,18 +92,18 @@ async def menu_text_router(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     if bool(state.get(SEARCH_PENDING_KEY)):
         if text == BUTTON_CANCEL:
             _reset_navigation_state(context)
-            await send_home_screen(update, context, prefix="Cancelled.")
+            await send_home_screen(update, context, prefix="Скасовано.")
             return
         if text in MAIN_MENU_BUTTONS:
             _clear_search_pending(context)
-            await message.reply_text("Use menu buttons to navigate.")
+            await message.reply_text("Для навігації використовуйте кнопки меню.")
             return
         _clear_search_pending(context)
         await show_song_browser(update, context, query=text)
         return
 
     await message.reply_text(
-        "Use the menu buttons or tap Start.",
+        "Скористайтеся кнопками меню або натисніть «Головна».",
         reply_markup=home_menu_markup(update, context),
     )
 
@@ -115,7 +118,7 @@ async def navigation_callback_router(update: Update, context: ContextTypes.DEFAU
         await query.answer()
         page_payload = _parse_browser_page(data)
         if page_payload is None:
-            await query.edit_message_text("Could not parse browser page.")
+            await query.edit_message_text("Не вдалося розпізнати сторінку списку.")
             return
         mode, page = page_payload
         await _render_browser_page(update, context, mode=mode, page=page, edit=True)
@@ -123,14 +126,14 @@ async def navigation_callback_router(update: Update, context: ContextTypes.DEFAU
 
     if data == "browser:close":
         await query.answer()
-        await query.edit_message_text("Closed.")
+        await query.edit_message_text("Закрито.")
         return
 
     if data.startswith("song:detail:"):
         await query.answer()
         detail_payload = _parse_song_action(data, prefix="song:detail:")
         if detail_payload is None:
-            await query.edit_message_text("Could not load song details.")
+            await query.edit_message_text("Не вдалося завантажити деталі пісні.")
             return
         song_id, page = detail_payload
         await _render_song_detail(update, context, song_id=song_id, page=page)
@@ -141,7 +144,9 @@ async def navigation_callback_router(update: Update, context: ContextTypes.DEFAU
         view_song_id = _parse_single_song_id(data, prefix="song:view:")
         if view_song_id is None:
             if update.effective_message is not None:
-                await update.effective_message.reply_text("Could not parse chart target song.")
+                await update.effective_message.reply_text(
+                    "Не вдалося розпізнати пісню для перегляду акордів."
+                )
             return
         await send_chart_for_song_id(update, context, view_song_id)
         return
@@ -150,7 +155,7 @@ async def navigation_callback_router(update: Update, context: ContextTypes.DEFAU
         await query.answer()
         confirm_payload = _parse_song_action(data, prefix="song:archiveconfirm:")
         if confirm_payload is None:
-            await query.edit_message_text("Could not parse archive request.")
+            await query.edit_message_text("Не вдалося розпізнати запит на архівацію.")
             return
         song_id, page = confirm_payload
         await _archive_song_from_detail(update, context, song_id=song_id, page=page)
@@ -160,7 +165,7 @@ async def navigation_callback_router(update: Update, context: ContextTypes.DEFAU
         await query.answer()
         archive_payload = _parse_song_action(data, prefix="song:archive:")
         if archive_payload is None:
-            await query.edit_message_text("Could not parse archive request.")
+            await query.edit_message_text("Не вдалося розпізнати запит на архівацію.")
             return
         song_id, page = archive_payload
         await _render_archive_confirmation(update, context, song_id=song_id, page=page)
@@ -178,7 +183,7 @@ async def navigation_callback_router(update: Update, context: ContextTypes.DEFAU
 
     if data == "backup:close":
         await query.answer()
-        await query.edit_message_text("Backup menu closed.")
+        await query.edit_message_text("Меню резервних копій закрито.")
 
 
 def build_navigation_callback_handler() -> CallbackQueryHandler:
@@ -204,14 +209,14 @@ async def show_song_browser(
     service = get_song_service(context)
     if query is None:
         songs = await service.list_songs()
-        title = "Active songs"
+        title = "Активні пісні"
     else:
         songs = await service.search_songs(query)
-        title = f'Matches for "{query}"'
+        title = f'Результати для "{query}"'
     if update.effective_message is None:
         return
     if not songs:
-        text = "No matching songs found." if query else "No active songs yet."
+        text = "Нічого не знайдено." if query else "Ще немає активних пісень."
         await update.effective_message.reply_text(text)
         return
 
@@ -230,12 +235,12 @@ async def show_upload_target_picker(update: Update, context: ContextTypes.DEFAUL
     if update.effective_message is None:
         return
     if not songs:
-        await update.effective_message.reply_text("No active songs yet.")
+        await update.effective_message.reply_text("Ще немає активних пісень.")
         return
 
     state: BrowserState = {
         "mode": "upload",
-        "title": "Select a song to upload a chart",
+        "title": "Оберіть пісню для завантаження акордів",
         "items": _browser_items(songs),
     }
     _user_state(context)[SONG_BROWSER_STATE_KEY] = state
@@ -250,17 +255,17 @@ async def show_backup_menu(
 ) -> None:
     if not is_admin_user(update, context):
         if update.effective_message is not None:
-            await update.effective_message.reply_text("Admin access is required for this action.")
+            await update.effective_message.reply_text("Для цієї дії потрібні права адміністратора.")
         return
 
-    text = "Backup actions:"
+    text = "Дії з резервними копіями:"
     keyboard = InlineKeyboardMarkup(
         [
             [
-                InlineKeyboardButton("Export Backup", callback_data="backup:export"),
-                InlineKeyboardButton("Import Backup", callback_data="backup:import:start"),
+                InlineKeyboardButton("Експорт резервної копії", callback_data="backup:export"),
+                InlineKeyboardButton("Імпорт резервної копії", callback_data="backup:import:start"),
             ],
-            [InlineKeyboardButton("Close", callback_data="backup:close")],
+            [InlineKeyboardButton("Закрити", callback_data="backup:close")],
         ]
     )
     query = update.callback_query
@@ -282,22 +287,24 @@ async def _render_browser_page(
     browser_state = _active_browser_state(context)
     if browser_state is None:
         if update.callback_query is not None:
-            await update.callback_query.edit_message_text("The song browser session expired.")
+            await update.callback_query.edit_message_text("Сесія перегляду пісень завершилася.")
         elif update.effective_message is not None:
-            await update.effective_message.reply_text("The song browser session expired.")
+            await update.effective_message.reply_text("Сесія перегляду пісень завершилася.")
         return
     if browser_state["mode"] != mode:
         if update.callback_query is not None:
-            await update.callback_query.edit_message_text("Song browser mode is out of sync.")
+            await update.callback_query.edit_message_text(
+                "Режим перегляду пісень не синхронізовано."
+            )
         return
 
     items = browser_state["items"]
     total = len(items)
     if total == 0:
         if update.callback_query is not None:
-            await update.callback_query.edit_message_text("No songs to display.")
+            await update.callback_query.edit_message_text("Немає пісень для відображення.")
         elif update.effective_message is not None:
-            await update.effective_message.reply_text("No songs to display.")
+            await update.effective_message.reply_text("Немає пісень для відображення.")
         return
 
     total_pages = (total + BROWSER_PAGE_SIZE - 1) // BROWSER_PAGE_SIZE
@@ -308,11 +315,11 @@ async def _render_browser_page(
 
     body_lines = [
         f"{browser_state['title']} ({total})",
-        f"Page {normalized_page + 1}/{total_pages}",
+        f"Сторінка {normalized_page + 1}/{total_pages}",
     ]
     for item in page_items:
         body_lines.append(f"#{item['id']} {item['title']} | {item['artist']}")
-    body_lines.append("Tap a song below.")
+    body_lines.append("Оберіть пісню нижче.")
     text = "\n".join(body_lines)
     keyboard = _browser_keyboard(
         mode=mode,
@@ -349,15 +356,15 @@ def _browser_keyboard(
     nav_row: list[InlineKeyboardButton] = []
     if page > 0:
         nav_row.append(
-            InlineKeyboardButton("Prev", callback_data=f"browser:page:{mode_short}:{page - 1}")
+            InlineKeyboardButton("Назад", callback_data=f"browser:page:{mode_short}:{page - 1}")
         )
     if page < total_pages - 1:
         nav_row.append(
-            InlineKeyboardButton("Next", callback_data=f"browser:page:{mode_short}:{page + 1}")
+            InlineKeyboardButton("Далі", callback_data=f"browser:page:{mode_short}:{page + 1}")
         )
     if nav_row:
         rows.append(nav_row)
-    rows.append([InlineKeyboardButton("Close", callback_data="browser:close")])
+    rows.append([InlineKeyboardButton("Закрити", callback_data="browser:close")])
     return InlineKeyboardMarkup(rows)
 
 
@@ -384,22 +391,26 @@ async def _render_song_detail(
         page=page,
         is_admin=is_admin_user(update, context),
     )
-    await query.edit_message_text("Song details:\n" + format_song(song), reply_markup=keyboard)
+    await query.edit_message_text("Деталі пісні:\n" + format_song(song), reply_markup=keyboard)
 
 
 def _song_detail_keyboard(*, song_id: int, page: int, is_admin: bool) -> InlineKeyboardMarkup:
     rows: list[list[InlineKeyboardButton]] = [
-        [InlineKeyboardButton("View Chart", callback_data=f"song:view:{song_id}")],
+        [InlineKeyboardButton("Переглянути акорди", callback_data=f"song:view:{song_id}")],
     ]
     if is_admin:
         rows.append(
             [
-                InlineKeyboardButton("Edit", callback_data=f"edit:start:{song_id}"),
-                InlineKeyboardButton("Archive", callback_data=f"song:archive:{song_id}:{page}"),
+                InlineKeyboardButton("Редагувати", callback_data=f"edit:start:{song_id}"),
+                InlineKeyboardButton("Архівувати", callback_data=f"song:archive:{song_id}:{page}"),
             ]
         )
-        rows.append([InlineKeyboardButton("Upload Chart", callback_data=f"upload:start:{song_id}")])
-    rows.append([InlineKeyboardButton("Back to Results", callback_data=f"browser:page:b:{page}")])
+        rows.append(
+            [InlineKeyboardButton("Завантажити акорди", callback_data=f"upload:start:{song_id}")]
+        )
+    rows.append(
+        [InlineKeyboardButton("Назад до результатів", callback_data=f"browser:page:b:{page}")]
+    )
     return InlineKeyboardMarkup(rows)
 
 
@@ -414,7 +425,7 @@ async def _render_archive_confirmation(
     if query is None:
         return
     if not is_admin_user(update, context):
-        await query.answer("Admin access is required.", show_alert=True)
+        await query.answer("Потрібні права адміністратора.", show_alert=True)
         return
 
     service = get_song_service(context)
@@ -428,15 +439,15 @@ async def _render_archive_confirmation(
         [
             [
                 InlineKeyboardButton(
-                    "Confirm Archive",
+                    "Підтвердити архівацію",
                     callback_data=f"song:archiveconfirm:{song_id}:{page}",
                 )
             ],
-            [InlineKeyboardButton("Back", callback_data=f"song:detail:{song_id}:{page}")],
+            [InlineKeyboardButton("Назад", callback_data=f"song:detail:{song_id}:{page}")],
         ]
     )
     await query.edit_message_text(
-        f"Archive song #{song_id}: {song.title}?",
+        f"Архівувати пісню #{song_id}: {song.title}?",
         reply_markup=keyboard,
     )
 
@@ -452,7 +463,7 @@ async def _archive_song_from_detail(
     if query is None:
         return
     if not is_admin_user(update, context):
-        await query.answer("Admin access is required.", show_alert=True)
+        await query.answer("Потрібні права адміністратора.", show_alert=True)
         return
 
     service = get_song_service(context)
@@ -463,10 +474,10 @@ async def _archive_song_from_detail(
         return
 
     keyboard = InlineKeyboardMarkup(
-        [[InlineKeyboardButton("Back to Results", callback_data=f"browser:page:b:{page}")]]
+        [[InlineKeyboardButton("Назад до результатів", callback_data=f"browser:page:b:{page}")]]
     )
     await query.edit_message_text(
-        f"Archived song #{song.id}: {song.title}",
+        f"Пісню #{song.id} архівовано: {song.title}",
         reply_markup=keyboard,
     )
 

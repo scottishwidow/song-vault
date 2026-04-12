@@ -121,7 +121,7 @@ class RepertoireBackupService:
                 )
                 archive.writestr(chart_paths[chart.id], stored.content)
 
-        file_name = f"song-vault-backup-{datetime.now(UTC):%Y%m%d-%H%M%S}.zip"
+        file_name = f"rezervna-kopiia-{datetime.now(UTC):%Y%m%d-%H%M%S}.zip"
         return BackupArchive(
             filename=file_name,
             content=buffer.getvalue(),
@@ -265,7 +265,7 @@ def _build_restore_object_key(*, restore_prefix: str, song_id: int, original_fil
 
 def _parse_backup_archive(archive_bytes: bytes) -> _ParsedBackup:
     if not archive_bytes:
-        raise BackupValidationError("Backup file is empty.")
+        raise BackupValidationError("Файл резервної копії порожній.")
 
     try:
         with ZipFile(BytesIO(archive_bytes), mode="r") as archive:
@@ -276,7 +276,7 @@ def _parse_backup_archive(archive_bytes: bytes) -> _ParsedBackup:
                     content_by_path[chart.archive_path] = archive.read(chart.archive_path)
                 except KeyError as error:
                     raise BackupValidationError(
-                        f"Missing chart file '{chart.archive_path}' in backup archive."
+                        f"У резервній копії відсутній файл акордів '{chart.archive_path}'."
                     ) from error
             return _ParsedBackup(
                 songs=manifest.songs,
@@ -284,7 +284,9 @@ def _parse_backup_archive(archive_bytes: bytes) -> _ParsedBackup:
                 chart_content=content_by_path,
             )
     except BadZipFile as error:
-        raise BackupValidationError("Backup file must be a valid .zip archive.") from error
+        raise BackupValidationError(
+            "Файл резервної копії має бути валідним .zip архівом."
+        ) from error
 
 
 @dataclass(slots=True, frozen=True)
@@ -297,44 +299,44 @@ def _parse_manifest(archive: ZipFile) -> _Manifest:
     try:
         raw_manifest = archive.read(MANIFEST_FILENAME)
     except KeyError as error:
-        raise BackupValidationError("Backup archive is missing manifest.json.") from error
+        raise BackupValidationError("У резервній копії відсутній файл manifest.json.") from error
 
     try:
         payload = json.loads(raw_manifest.decode("utf-8"))
     except (UnicodeDecodeError, json.JSONDecodeError) as error:
-        raise BackupValidationError("Backup manifest.json is invalid JSON.") from error
+        raise BackupValidationError("Файл manifest.json містить невалідний JSON.") from error
 
     if not isinstance(payload, dict):
-        raise BackupValidationError("Backup manifest.json must contain an object at the root.")
+        raise BackupValidationError("У корені manifest.json має бути JSON-об'єкт.")
 
     version = payload.get("version")
     if version not in SUPPORTED_BACKUP_MANIFEST_VERSIONS:
         raise BackupValidationError(
-            "Unsupported backup manifest version: "
-            f"{version!r}. Expected one of {sorted(SUPPORTED_BACKUP_MANIFEST_VERSIONS)}."
+            "Непідтримувана версія manifest резервної копії: "
+            f"{version!r}. Підтримуються: {sorted(SUPPORTED_BACKUP_MANIFEST_VERSIONS)}."
         )
 
     raw_songs = payload.get("songs")
     raw_charts = payload.get("charts")
     if not isinstance(raw_songs, list) or not isinstance(raw_charts, list):
-        raise BackupValidationError("Backup manifest must contain 'songs' and 'charts' arrays.")
+        raise BackupValidationError("manifest має містити масиви 'songs' і 'charts'.")
 
     songs = [_parse_song_row(item) for item in raw_songs]
     charts = [_parse_chart_row(item) for item in raw_charts]
 
     song_ids = [song.id for song in songs]
     if len(set(song_ids)) != len(song_ids):
-        raise BackupValidationError("Backup contains duplicate song IDs.")
+        raise BackupValidationError("Резервна копія містить дублікати song ID.")
 
     chart_ids = [chart.id for chart in charts]
     if len(set(chart_ids)) != len(chart_ids):
-        raise BackupValidationError("Backup contains duplicate chart IDs.")
+        raise BackupValidationError("Резервна копія містить дублікати chart ID.")
 
     known_song_ids = set(song_ids)
     for chart in charts:
         if chart.song_id not in known_song_ids:
             raise BackupValidationError(
-                f"Chart #{chart.id} references unknown song ID {chart.song_id}."
+                f"Chart #{chart.id} посилається на невідомий song ID {chart.song_id}."
             )
         _validate_archive_path(chart.archive_path)
 
@@ -371,7 +373,7 @@ def _parse_chart_row(raw_item: object) -> _BackupChart:
     item = _expect_dict(raw_item, "chart entry")
     content_type = _expect_non_empty_str(item, "content_type", "chart")
     if not content_type.startswith("image/"):
-        raise BackupValidationError("Chart content_type must start with 'image/'.")
+        raise BackupValidationError("chart.content_type має починатися з 'image/'.")
 
     return _BackupChart(
         id=_expect_int(item, "id", "chart"),
@@ -389,14 +391,14 @@ def _parse_chart_row(raw_item: object) -> _BackupChart:
 
 def _expect_dict(raw_item: object, entry_name: str) -> dict[str, Any]:
     if not isinstance(raw_item, dict):
-        raise BackupValidationError(f"Each {entry_name} must be an object.")
+        raise BackupValidationError(f"Кожен елемент {entry_name} має бути об'єктом.")
     return raw_item
 
 
 def _expect_int(item: dict[str, Any], key: str, entry_name: str) -> int:
     value = item.get(key)
     if not isinstance(value, int):
-        raise BackupValidationError(f"{entry_name}.{key} must be an integer.")
+        raise BackupValidationError(f"{entry_name}.{key} має бути цілим числом.")
     return value
 
 
@@ -405,14 +407,14 @@ def _expect_optional_int(item: dict[str, Any], key: str, entry_name: str) -> int
     if value is None:
         return None
     if not isinstance(value, int):
-        raise BackupValidationError(f"{entry_name}.{key} must be an integer or null.")
+        raise BackupValidationError(f"{entry_name}.{key} має бути цілим числом або null.")
     return value
 
 
 def _expect_non_empty_str(item: dict[str, Any], key: str, entry_name: str) -> str:
     value = item.get(key)
     if not isinstance(value, str) or not value.strip():
-        raise BackupValidationError(f"{entry_name}.{key} must be a non-empty string.")
+        raise BackupValidationError(f"{entry_name}.{key} має бути непорожнім рядком.")
     return value
 
 
@@ -421,7 +423,7 @@ def _expect_optional_str(item: dict[str, Any], key: str, entry_name: str) -> str
     if value is None:
         return None
     if not isinstance(value, str):
-        raise BackupValidationError(f"{entry_name}.{key} must be a string or null.")
+        raise BackupValidationError(f"{entry_name}.{key} має бути рядком або null.")
     cleaned = value.strip()
     return cleaned or None
 
@@ -429,48 +431,54 @@ def _expect_optional_str(item: dict[str, Any], key: str, entry_name: str) -> str
 def _expect_str_list(item: dict[str, Any], key: str, entry_name: str) -> list[str]:
     value = item.get(key)
     if not isinstance(value, list) or not all(isinstance(part, str) for part in value):
-        raise BackupValidationError(f"{entry_name}.{key} must be a list of strings.")
+        raise BackupValidationError(f"{entry_name}.{key} має бути списком рядків.")
     return [part for part in value]
 
 
 def _expect_song_status(item: dict[str, Any], key: str) -> SongStatus:
     raw_status = item.get(key)
     if not isinstance(raw_status, str):
-        raise BackupValidationError("song.status must be a string.")
+        raise BackupValidationError("song.status має бути рядком.")
     try:
         return SongStatus(raw_status)
     except ValueError as error:
-        raise BackupValidationError(f"Unsupported song.status value: {raw_status!r}.") from error
+        raise BackupValidationError(
+            f"Непідтримуване значення song.status: {raw_status!r}."
+        ) from error
 
 
 def _expect_chart_status(item: dict[str, Any], key: str) -> SongChartStatus:
     raw_status = item.get(key)
     if not isinstance(raw_status, str):
-        raise BackupValidationError("chart.status must be a string.")
+        raise BackupValidationError("chart.status має бути рядком.")
     try:
         return SongChartStatus(raw_status)
     except ValueError as error:
-        raise BackupValidationError(f"Unsupported chart.status value: {raw_status!r}.") from error
+        raise BackupValidationError(
+            f"Непідтримуване значення chart.status: {raw_status!r}."
+        ) from error
 
 
 def _expect_datetime(item: dict[str, Any], key: str, entry_name: str) -> datetime:
     raw_value = item.get(key)
     if not isinstance(raw_value, str):
-        raise BackupValidationError(f"{entry_name}.{key} must be an ISO-8601 datetime string.")
+        raise BackupValidationError(
+            f"{entry_name}.{key} має бути рядком datetime у форматі ISO-8601."
+        )
     try:
         return datetime.fromisoformat(raw_value)
     except ValueError as error:
         raise BackupValidationError(
-            f"{entry_name}.{key} must be a valid ISO-8601 datetime string."
+            f"{entry_name}.{key} має бути валідним datetime-рядком ISO-8601."
         ) from error
 
 
 def _validate_archive_path(path_value: str) -> None:
     path = PurePosixPath(path_value)
     if path.is_absolute() or ".." in path.parts:
-        raise BackupValidationError(f"Invalid chart archive_path: {path_value!r}.")
+        raise BackupValidationError(f"Невалідний chart archive_path: {path_value!r}.")
     if not path_value.startswith("charts/"):
-        raise BackupValidationError("chart.archive_path must be inside the charts/ directory.")
+        raise BackupValidationError("chart.archive_path має бути всередині каталогу charts/.")
 
 
 async def _reset_sequences(session: AsyncSession, *, song_max_id: int, chart_max_id: int) -> None:

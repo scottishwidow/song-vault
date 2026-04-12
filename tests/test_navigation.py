@@ -102,7 +102,7 @@ async def test_menu_songs_button_opens_song_browser() -> None:
     assert SONG_BROWSER_STATE_KEY in context.user_data
     reply.assert_awaited_once()
     message_text = reply.await_args.args[0]
-    assert "Active songs (1)" in message_text
+    assert "Активні пісні (1)" in message_text
     keyboard = reply.await_args.kwargs["reply_markup"]
     assert keyboard.inline_keyboard[0][0].callback_data == "song:detail:5:0"
 
@@ -130,7 +130,7 @@ async def test_menu_search_prompt_then_query_opens_browser_results() -> None:
     assert SEARCH_PENDING_KEY not in context.user_data
     query_reply.assert_awaited_once()
     message_text = query_reply.await_args.args[0]
-    assert 'Matches for "grace" (1)' in message_text
+    assert 'Результати для "grace" (1)' in message_text
 
 
 @pytest.mark.asyncio
@@ -140,7 +140,7 @@ async def test_start_button_returns_home_screen_and_clears_navigation_state() ->
     context.user_data[SEARCH_PENDING_KEY] = True
     context.user_data[SONG_BROWSER_STATE_KEY] = {
         "mode": "browse",
-        "title": "Active songs",
+        "title": "Активні пісні",
         "items": [],
     }
     update, reply = build_message_update(text=MENU_START)
@@ -150,7 +150,7 @@ async def test_start_button_returns_home_screen_and_clears_navigation_state() ->
     assert SEARCH_PENDING_KEY not in context.user_data
     assert SONG_BROWSER_STATE_KEY not in context.user_data
     reply.assert_awaited_once()
-    assert reply.await_args.args[0] == "Song Vault is ready.\nUse the menu buttons below."
+    assert reply.await_args.args[0] == "Бот готовий.\nКористуйтеся кнопками меню нижче."
     keyboard = reply.await_args.kwargs["reply_markup"]
     rows = [[button.text for button in row] for row in keyboard.keyboard]
     assert rows[0] == [MENU_START, MENU_SONGS]
@@ -164,7 +164,7 @@ async def test_search_cancel_returns_home_screen() -> None:
 
     await menu_text_router(prompt_update, context)
 
-    cancel_update, cancel_reply = build_message_update(text="Cancel")
+    cancel_update, cancel_reply = build_message_update(text="Скасувати")
     cancel_update.effective_user = prompt_update.effective_user
     cancel_update.effective_chat = prompt_update.effective_chat
 
@@ -173,7 +173,7 @@ async def test_search_cancel_returns_home_screen() -> None:
     assert SEARCH_PENDING_KEY not in context.user_data
     cancel_reply.assert_awaited_once()
     assert cancel_reply.await_args.args[0] == (
-        "Cancelled.\nSong Vault is ready.\nUse the menu buttons below."
+        "Скасовано.\nБот готовий.\nКористуйтеся кнопками меню нижче."
     )
     keyboard = cancel_reply.await_args.kwargs["reply_markup"]
     assert keyboard.keyboard[0][0].text == MENU_START
@@ -186,7 +186,7 @@ async def test_song_detail_for_non_admin_hides_admin_action_buttons() -> None:
     context = build_context(song_service=song_service, admin_ids=(1,))
     context.user_data[SONG_BROWSER_STATE_KEY] = {
         "mode": "browse",
-        "title": "Active songs",
+        "title": "Активні пісні",
         "items": [{"id": 5, "title": "Amazing Grace", "artist": "Traditional"}],
     }
     update, query = build_callback_update(data="song:detail:5:0", user_id=2)
@@ -197,11 +197,11 @@ async def test_song_detail_for_non_admin_hides_admin_action_buttons() -> None:
     query.edit_message_text.assert_awaited_once()
     keyboard = query.edit_message_text.await_args.kwargs["reply_markup"]
     labels = [button.text for row in keyboard.inline_keyboard for button in row]
-    assert "Edit" not in labels
-    assert "Archive" not in labels
-    assert "Upload Chart" not in labels
-    assert "View Chart" in labels
-    assert "Back to Results" in labels
+    assert "Редагувати" not in labels
+    assert "Архівувати" not in labels
+    assert "Завантажити акорди" not in labels
+    assert "Переглянути акорди" in labels
+    assert "Назад до результатів" in labels
 
 
 @pytest.mark.asyncio
@@ -211,7 +211,7 @@ async def test_song_detail_for_admin_shows_admin_action_buttons() -> None:
     context = build_context(song_service=song_service, admin_ids=(1,))
     context.user_data[SONG_BROWSER_STATE_KEY] = {
         "mode": "browse",
-        "title": "Active songs",
+        "title": "Активні пісні",
         "items": [{"id": 5, "title": "Amazing Grace", "artist": "Traditional"}],
     }
     update, query = build_callback_update(data="song:detail:5:0", user_id=1)
@@ -222,6 +222,6 @@ async def test_song_detail_for_admin_shows_admin_action_buttons() -> None:
     query.edit_message_text.assert_awaited_once()
     keyboard = query.edit_message_text.await_args.kwargs["reply_markup"]
     labels = [button.text for row in keyboard.inline_keyboard for button in row]
-    assert "Edit" in labels
-    assert "Archive" in labels
-    assert "Upload Chart" in labels
+    assert "Редагувати" in labels
+    assert "Архівувати" in labels
+    assert "Завантажити акорди" in labels

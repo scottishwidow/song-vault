@@ -54,7 +54,7 @@ class ChartService:
         async with self._session_factory() as session:
             song = await session.get(Song, song_id)
             if song is None:
-                raise SongNotFoundError(f"Song {song_id} was not found.")
+                raise SongNotFoundError(f"Пісню {song_id} не знайдено.")
             return song
 
     async def upload_chart(self, song_id: int, payload: ChartUpload) -> SongChart:
@@ -74,7 +74,7 @@ class ChartService:
             async with self._session_factory() as session:
                 song = await session.get(Song, song_id)
                 if song is None:
-                    raise SongNotFoundError(f"Song {song_id} was not found.")
+                    raise SongNotFoundError(f"Пісню {song_id} не знайдено.")
 
                 statement = select(SongChart).where(
                     SongChart.song_id == song_id,
@@ -110,7 +110,7 @@ class ChartService:
         async with self._session_factory() as session:
             song = await session.get(Song, song_id)
             if song is None:
-                raise SongNotFoundError(f"Song {song_id} was not found.")
+                raise SongNotFoundError(f"Пісню {song_id} не знайдено.")
 
             statement = select(SongChart).where(
                 SongChart.song_id == song_id,
@@ -118,7 +118,7 @@ class ChartService:
             )
             chart = await session.scalar(statement)
             if chart is None:
-                raise SongChartNotFoundError(f"Song {song_id} has no active chart.")
+                raise SongChartNotFoundError(f"Для пісні {song_id} немає активних акордів.")
 
         stored_binary = await self._storage.get_chart(
             bucket=chart.storage_bucket,
@@ -146,14 +146,14 @@ def _clean_optional(value: str | None) -> str | None:
 def _clean_filename(original_filename: str) -> str:
     cleaned = original_filename.strip()
     if not cleaned:
-        raise ValueError("A filename is required for chart uploads.")
+        raise ValueError("Для завантаження акордів потрібна назва файлу.")
     return cleaned[:255]
 
 
 def _clean_content_type(content_type: str) -> str:
     cleaned = content_type.strip().lower()
     if not cleaned.startswith("image/"):
-        raise ValueError("Chart uploads must be images.")
+        raise ValueError("Файл акордів має бути зображенням.")
     return cleaned
 
 
@@ -164,7 +164,7 @@ def _clean_source_url(source_url: str | None) -> str | None:
 
     parsed = urlparse(cleaned)
     if parsed.scheme not in {"http", "https"} or not parsed.netloc:
-        raise ValueError("Source URL must be an http:// or https:// URL.")
+        raise ValueError("Посилання на джерело має починатися з http:// або https://.")
     return cleaned
 
 
