@@ -1,13 +1,4 @@
 [mcp_servers.github]
-command = "docker"
-args = [
-  "run",
-  "-i",
-  "--rm",
-  "-e",
-  "GITHUB_PERSONAL_ACCESS_TOKEN",
-  "-e",
-  "GITHUB_HOST",
-  "ghcr.io/github/github-mcp-server"
-]
-enabled = false
+url = "https://api.githubcopilot.com/mcp/"
+bearer_token_env_var = "GITHUB_PAT_TOKEN"
+enabled = true
