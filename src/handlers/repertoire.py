@@ -18,13 +18,14 @@ from telegram.ext import (
 from bot.runtime import get_song_service
 from handlers.common import ensure_admin, send_home_screen
 from handlers.ui import (
+    BUTTON_SKIP,
     CANCEL_BUTTON_PATTERN,
     MENU_ADD_SONG,
     cancel_markup,
     home_menu_markup,
     skip_cancel_markup,
 )
-from models.song import Song
+from models.song import Song, SongStatus
 from services.song_service import (
     SongCreate,
     SongNotFoundError,
@@ -46,6 +47,7 @@ from services.song_service import (
 ) = range(10)
 EDIT_FIELD, EDIT_VALUE = range(2)
 RESULT_MESSAGE_CHAR_LIMIT = 3500
+CLEAR_INPUT = "очистити"
 
 PENDING_SONG_KEY = "pending_song"
 EDIT_SONG_ID_KEY = "edit_song_id"
@@ -58,6 +60,7 @@ class EditFieldSpec:
     prompt: str
     format_current: Callable[[Song], str]
     parse_input: Callable[[str], SongUpdate]
+    aliases: tuple[str, ...]
 
 
 def format_song(song: Song) -> str:
@@ -70,21 +73,29 @@ def format_song(song: Song) -> str:
     arrangement_notes_text = song.arrangement_notes or "-"
     return (
         f"#{song.id} {song.title}\n"
-        f"Artist: {song.artist}\n"
-        f"Source: {source_text}\n"
-        f"Key: {song.key}\n"
-        f"Capo: {capo_text}\n"
-        f"Time signature: {time_signature_text}\n"
-        f"Tempo: {tempo_text}\n"
-        f"Tags: {tag_text}\n"
-        f"Notes: {notes_text}\n"
-        f"Arrangement notes: {arrangement_notes_text}\n"
-        f"Status: {song.status.value}"
+        f"Виконавець: {song.artist}\n"
+        f"Джерело: {source_text}\n"
+        f"Тональність: {song.key}\n"
+        f"Каподастр: {capo_text}\n"
+        f"Розмір: {time_signature_text}\n"
+        f"Темп: {tempo_text}\n"
+        f"Теги: {tag_text}\n"
+        f"Нотатки: {notes_text}\n"
+        f"Нотатки аранжування: {arrangement_notes_text}\n"
+        f"Статус: {_status_label(song.status)}"
     )
 
 
 def format_compact_song(song: Song) -> str:
-    return f"#{song.id} {song.title} | {song.artist} | Key: {song.key}"
+    return f"#{song.id} {song.title} | {song.artist} | Тональність: {song.key}"
+
+
+def _status_label(status: SongStatus) -> str:
+    labels = {
+        SongStatus.ACTIVE: "активна",
+        SongStatus.ARCHIVED: "архівована",
+    }
+    return labels[status]
 
 
 def _truncate_text(value: str, limit: int) -> str:
@@ -98,7 +109,7 @@ def _truncate_text(value: str, limit: int) -> str:
 
 
 def _continuation_header(base_header: str, chunk_number: int, total_chunks: int) -> str:
-    return f"{base_header} (cont. {chunk_number}/{total_chunks}):"
+    return f"{base_header} (продовження {chunk_number}/{total_chunks}):"
 
 
 def _chunk_compact_lines(
@@ -212,14 +223,14 @@ def _parse_required_text(
     build_update: Callable[[str], SongUpdate],
 ) -> SongUpdate:
     if not raw_value:
-        raise ValueError(f"{label} cannot be empty. Send a non-empty value.")
+        raise ValueError(f"Поле «{label}» не може бути порожнім. Надішліть непорожнє значення.")
     return build_update(raw_value)
 
 
 def _parse_title_update(raw_value: str) -> SongUpdate:
     return _parse_required_text(
         raw_value,
-        label="Title",
+        label="назва",
         build_update=lambda value: SongUpdate(title=value),
     )
 
@@ -227,85 +238,89 @@ def _parse_title_update(raw_value: str) -> SongUpdate:
 def _parse_artist_update(raw_value: str) -> SongUpdate:
     return _parse_required_text(
         raw_value,
-        label="Artist",
+        label="виконавець",
         build_update=lambda value: SongUpdate(artist=value),
     )
 
 
 def _parse_source_update(raw_value: str) -> SongUpdate:
-    if raw_value.lower() == "clear":
+    if _is_clear(raw_value):
         return SongUpdate(source_url=None)
     if not raw_value:
-        raise ValueError("Source URL must be text or 'clear'.")
+        raise ValueError("Джерело має бути текстом або «очистити».")
     return SongUpdate(source_url=raw_value)
 
 
 def _parse_key_update(raw_value: str) -> SongUpdate:
     return _parse_required_text(
         raw_value,
-        label="Key",
+        label="тональність",
         build_update=lambda value: SongUpdate(key=value),
     )
 
 
 def _parse_tempo_update(raw_value: str) -> SongUpdate:
-    if raw_value.lower() == "clear":
+    if _is_clear(raw_value):
         return SongUpdate(tempo_bpm=None)
     if not raw_value:
-        raise ValueError("Tempo must be a number or 'clear'.")
+        raise ValueError("Темп має бути числом або «очистити».")
     try:
         return SongUpdate(tempo_bpm=int(raw_value))
     except ValueError as error:
-        raise ValueError("Tempo must be a number or 'clear'.") from error
+        raise ValueError("Темп має бути числом або «очистити».") from error
 
 
 def _parse_capo_update(raw_value: str) -> SongUpdate:
-    if raw_value.lower() == "clear":
+    if _is_clear(raw_value):
         return SongUpdate(capo=None)
     if not raw_value:
-        raise ValueError("Capo must be a positive number or 'clear'.")
+        raise ValueError("Каподастр має бути додатним числом або «очистити».")
     try:
         capo = int(raw_value)
     except ValueError as error:
-        raise ValueError("Capo must be a positive number or 'clear'.") from error
+        raise ValueError("Каподастр має бути додатним числом або «очистити».") from error
     if capo <= 0:
-        raise ValueError("Capo must be a positive number or 'clear'.")
+        raise ValueError("Каподастр має бути додатним числом або «очистити».")
     return SongUpdate(capo=capo)
 
 
 def _parse_time_signature_update(raw_value: str) -> SongUpdate:
-    if raw_value.lower() == "clear":
+    if _is_clear(raw_value):
         return SongUpdate(time_signature=None)
     if not raw_value:
-        raise ValueError("Time signature must be text or 'clear'.")
+        raise ValueError("Розмір має бути текстом або «очистити».")
     return SongUpdate(time_signature=raw_value)
 
 
 def _parse_tags_update(raw_value: str) -> SongUpdate:
-    if raw_value.lower() == "clear":
+    if _is_clear(raw_value):
         return SongUpdate(tags=[])
     if not raw_value:
-        raise ValueError("Tags must be comma-separated values or 'clear'.")
+        raise ValueError("Теги мають бути значеннями через кому або «очистити».")
     tags = parse_tag_input(raw_value)
     if not tags:
-        raise ValueError("Tags must be comma-separated values or 'clear'.")
+        raise ValueError("Теги мають бути значеннями через кому або «очистити».")
     return SongUpdate(tags=tags)
 
 
 def _parse_notes_update(raw_value: str) -> SongUpdate:
-    if raw_value.lower() == "clear":
+    if _is_clear(raw_value):
         return SongUpdate(notes=None)
     if not raw_value:
-        raise ValueError("Notes must be text or 'clear'.")
+        raise ValueError("Нотатки мають бути текстом або «очистити».")
     return SongUpdate(notes=raw_value)
 
 
 def _parse_arrangement_notes_update(raw_value: str) -> SongUpdate:
-    if raw_value.lower() == "clear":
+    if _is_clear(raw_value):
         return SongUpdate(arrangement_notes=None)
     if not raw_value:
-        raise ValueError("Arrangement notes must be text or 'clear'.")
+        raise ValueError("Нотатки аранжування мають бути текстом або «очистити».")
     return SongUpdate(arrangement_notes=raw_value)
+
+
+def _is_clear(raw_value: str) -> bool:
+    return raw_value.lower() == CLEAR_INPUT
 
 
 def _format_capo(song: Song) -> str:
@@ -338,82 +353,99 @@ def _format_arrangement_notes(song: Song) -> str:
 
 EDIT_FIELD_SPECS: dict[str, EditFieldSpec] = {
     "title": EditFieldSpec(
-        label="title",
-        prompt="New title?",
+        label="назва",
+        prompt="Нова назва?",
         format_current=lambda song: song.title,
         parse_input=_parse_title_update,
+        aliases=("назва",),
     ),
     "artist": EditFieldSpec(
-        label="artist",
-        prompt="New artist?",
+        label="виконавець",
+        prompt="Новий виконавець?",
         format_current=lambda song: song.artist,
         parse_input=_parse_artist_update,
+        aliases=("виконавець",),
     ),
     "source": EditFieldSpec(
-        label="source URL",
-        prompt="New source URL? Use text or 'clear'.",
+        label="джерело",
+        prompt="Нове джерело? Надішліть текст або «очистити».",
         format_current=_format_source,
         parse_input=_parse_source_update,
+        aliases=("джерело",),
     ),
     "key": EditFieldSpec(
-        label="key",
-        prompt="New key?",
+        label="тональність",
+        prompt="Нова тональність?",
         format_current=lambda song: song.key,
         parse_input=_parse_key_update,
+        aliases=("тональність",),
     ),
     "capo": EditFieldSpec(
-        label="capo",
-        prompt="New capo? Use a positive number or 'clear'.",
+        label="каподастр",
+        prompt="Новий каподастр? Надішліть додатне число або «очистити».",
         format_current=_format_capo,
         parse_input=_parse_capo_update,
+        aliases=("каподастр",),
     ),
     "time_signature": EditFieldSpec(
-        label="time signature",
-        prompt="New time signature? Use text or 'clear'.",
+        label="розмір",
+        prompt="Новий розмір? Надішліть текст або «очистити».",
         format_current=_format_time_signature,
         parse_input=_parse_time_signature_update,
+        aliases=("розмір",),
     ),
     "tempo": EditFieldSpec(
-        label="tempo",
-        prompt="New tempo BPM? Use a number or 'clear'.",
+        label="темп",
+        prompt="Новий темп (BPM)? Надішліть число або «очистити».",
         format_current=_format_tempo,
         parse_input=_parse_tempo_update,
+        aliases=("темп",),
     ),
     "tags": EditFieldSpec(
-        label="tags",
-        prompt="New comma-separated tags? Use 'clear' for none.",
+        label="теги",
+        prompt="Нові теги через кому? Надішліть «очистити», якщо без тегів.",
         format_current=_format_tags,
         parse_input=_parse_tags_update,
+        aliases=("теги",),
     ),
     "notes": EditFieldSpec(
-        label="notes",
-        prompt="New notes? Use 'clear' for none.",
+        label="нотатки",
+        prompt="Нові нотатки? Надішліть «очистити», якщо без нотаток.",
         format_current=_format_notes,
         parse_input=_parse_notes_update,
+        aliases=("нотатки",),
     ),
     "arrangement_notes": EditFieldSpec(
-        label="arrangement notes",
-        prompt="New arrangement notes? Use text or 'clear'.",
+        label="нотатки аранжування",
+        prompt="Нові нотатки аранжування? Надішліть текст або «очистити».",
         format_current=_format_arrangement_notes,
         parse_input=_parse_arrangement_notes_update,
+        aliases=("нотатки аранжування",),
     ),
 }
 
 
 def _editable_field_list() -> str:
-    return ", ".join(EDIT_FIELD_SPECS)
+    return ", ".join(spec.aliases[0] for spec in EDIT_FIELD_SPECS.values())
 
 
 def _edit_field_previews(song: Song) -> str:
     return "\n".join(
-        f"{field_name}: {spec.format_current(song)}"
-        for field_name, spec in EDIT_FIELD_SPECS.items()
+        f"{spec.aliases[0]}: {spec.format_current(song)}" for spec in EDIT_FIELD_SPECS.values()
     )
 
 
 def _edit_value_prompt(song: Song, field_name: str) -> str:
     spec = EDIT_FIELD_SPECS[field_name]
-    return f"{spec.prompt}\nCurrent {spec.label}: {spec.format_current(song)}"
+    return f"{spec.prompt}\nПоточне значення поля «{spec.label}»: {spec.format_current(song)}"
+
+
+def _resolve_edit_field(raw_value: str) -> str | None:
+    normalized = raw_value.strip().lower()
+    for field_name, spec in EDIT_FIELD_SPECS.items():
+        if normalized in spec.aliases:
+            return field_name
+    return None
 
 
 async def _reply_with_edit_value_prompt(
@@ -428,7 +460,7 @@ async def _reply_with_edit_value_prompt(
         return ConversationHandler.END
     if field_name not in EDIT_FIELD_SPECS:
         await update.effective_message.reply_text(
-            "Edit state was lost. Start again from the song details screen.",
+            "Стан редагування втрачено. Почніть знову з екрана деталей пісні.",
             reply_markup=home_menu_markup(update, context) or ReplyKeyboardRemove(),
         )
         return ConversationHandler.END
@@ -453,10 +485,10 @@ async def list_songs_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
     if update.effective_message is None:
         return
     if not songs:
-        await update.effective_message.reply_text("No active songs yet.")
+        await update.effective_message.reply_text("Ще немає активних пісень.")
         return
     count = len(songs)
-    base_header = f"Active songs ({count})"
+    base_header = f"Активні пісні ({count})"
     await _reply_song_results(
         update,
         songs,
@@ -470,17 +502,17 @@ async def search_songs_command(update: Update, context: ContextTypes.DEFAULT_TYP
         return
     query = " ".join(context.args or []).strip()
     if not query:
-        await update.effective_message.reply_text("Usage: /search <text>")
+        await update.effective_message.reply_text("Використання: /search <запит>")
         return
 
     service = get_song_service(context)
     songs = await service.search_songs(query)
     if not songs:
-        await update.effective_message.reply_text("No matching songs found.")
+        await update.effective_message.reply_text("Нічого не знайдено.")
         return
 
     count = len(songs)
-    base_header = f'Matches for "{query}" ({count})'
+    base_header = f'Результати для "{query}" ({count})'
     await _reply_song_results(
         update,
         songs,
@@ -495,9 +527,9 @@ async def tags_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     service = get_song_service(context)
     tags = await service.list_tags()
     if not tags:
-        await update.effective_message.reply_text("No tags found yet.")
+        await update.effective_message.reply_text("Теги ще не додано.")
         return
-    await update.effective_message.reply_text("Tags: " + ", ".join(tags))
+    await update.effective_message.reply_text("Теги: " + ", ".join(tags))
 
 
 async def archive_song_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -507,7 +539,7 @@ async def archive_song_command(update: Update, context: ContextTypes.DEFAULT_TYP
         return
     song_id = _parse_song_id(context.args or [])
     if song_id is None:
-        await update.effective_message.reply_text("Usage: /archivesong <id>")
+        await update.effective_message.reply_text("Використання: /archivesong <id_пісні>")
         return
 
     service = get_song_service(context)
@@ -517,7 +549,7 @@ async def archive_song_command(update: Update, context: ContextTypes.DEFAULT_TYP
         await update.effective_message.reply_text(str(error))
         return
 
-    await update.effective_message.reply_text(f"Archived song #{song.id}: {song.title}")
+    await update.effective_message.reply_text(f"Пісню #{song.id} архівовано: {song.title}")
 
 
 def _parse_song_id(args: list[str]) -> int | None:
@@ -533,7 +565,7 @@ async def cancel_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     _user_state(context).pop(PENDING_SONG_KEY, None)
     _user_state(context).pop(EDIT_SONG_ID_KEY, None)
     _user_state(context).pop(EDIT_FIELD_KEY, None)
-    await send_home_screen(update, context, prefix="Cancelled.")
+    await send_home_screen(update, context, prefix="Скасовано.")
     return ConversationHandler.END
 
 
@@ -543,7 +575,7 @@ async def add_song_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     _user_state(context)[PENDING_SONG_KEY] = {}
     if update.effective_message is not None:
         await update.effective_message.reply_text(
-            "Title?",
+            "Назва?",
             reply_markup=cancel_markup(update),
         )
     return ADD_TITLE
@@ -553,7 +585,7 @@ async def add_song_title(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     _user_state(context)[PENDING_SONG_KEY] = {"title": _message_text(update)}
     if update.effective_message is not None:
         await update.effective_message.reply_text(
-            "Artist?",
+            "Виконавець?",
             reply_markup=cancel_markup(update),
         )
     return ADD_ARTIST
@@ -564,7 +596,7 @@ async def add_song_artist(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     payload["artist"] = _message_text(update)
     if update.effective_message is not None:
         await update.effective_message.reply_text(
-            "Source URL? Send text or 'skip'.",
+            "Джерело? Надішліть текст або «Пропустити».",
             reply_markup=skip_cancel_markup(update),
         )
     return ADD_SOURCE
@@ -573,10 +605,10 @@ async def add_song_artist(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 async def add_song_source(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     payload = _pending_song(context)
     text = _message_text(update)
-    payload["source_url"] = None if text.lower() == "skip" else text
+    payload["source_url"] = None if text.lower() == BUTTON_SKIP.lower() else text
     if update.effective_message is not None:
         await update.effective_message.reply_text(
-            "Key?",
+            "Тональність?",
             reply_markup=cancel_markup(update),
         )
     return ADD_KEY
@@ -587,7 +619,7 @@ async def add_song_key(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
     payload["key"] = _message_text(update)
     if update.effective_message is not None:
         await update.effective_message.reply_text(
-            "Capo? Send a positive number or 'skip'.",
+            "Каподастр? Надішліть додатне число або «Пропустити».",
             reply_markup=skip_cancel_markup(update),
         )
     return ADD_CAPO
@@ -596,7 +628,7 @@ async def add_song_key(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
 async def add_song_capo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     payload = _pending_song(context)
     text = _message_text(update)
-    if text.lower() == "skip":
+    if text.lower() == BUTTON_SKIP.lower():
         payload["capo"] = None
     else:
         try:
@@ -604,19 +636,19 @@ async def add_song_capo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
         except ValueError:
             if update.effective_message is not None:
                 await update.effective_message.reply_text(
-                    "Capo must be a positive number or 'skip'."
+                    "Каподастр має бути додатним числом або «Пропустити»."
                 )
             return ADD_CAPO
         if capo <= 0:
             if update.effective_message is not None:
                 await update.effective_message.reply_text(
-                    "Capo must be a positive number or 'skip'."
+                    "Каподастр має бути додатним числом або «Пропустити»."
                 )
             return ADD_CAPO
         payload["capo"] = capo
     if update.effective_message is not None:
         await update.effective_message.reply_text(
-            "Time signature? Send text or 'skip'.",
+            "Розмір? Надішліть текст або «Пропустити».",
             reply_markup=skip_cancel_markup(update),
         )
     return ADD_TIME_SIGNATURE
@@ -625,10 +657,10 @@ async def add_song_capo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
 async def add_song_time_signature(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     payload = _pending_song(context)
     text = _message_text(update)
-    payload["time_signature"] = None if text.lower() == "skip" else text
+    payload["time_signature"] = None if text.lower() == BUTTON_SKIP.lower() else text
     if update.effective_message is not None:
         await update.effective_message.reply_text(
-            "Tempo BPM? Send a number or 'skip'.",
+            "Темп BPM? Надішліть число або «Пропустити».",
             reply_markup=skip_cancel_markup(update),
         )
     return ADD_TEMPO
@@ -637,18 +669,18 @@ async def add_song_time_signature(update: Update, context: ContextTypes.DEFAULT_
 async def add_song_tempo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     payload = _pending_song(context)
     text = _message_text(update)
-    if text.lower() == "skip":
+    if text.lower() == BUTTON_SKIP.lower():
         payload["tempo_bpm"] = None
     else:
         try:
             payload["tempo_bpm"] = int(text)
         except ValueError:
             if update.effective_message is not None:
-                await update.effective_message.reply_text("Tempo must be a number or 'skip'.")
+                await update.effective_message.reply_text("Темп має бути числом або «Пропустити».")
             return ADD_TEMPO
     if update.effective_message is not None:
         await update.effective_message.reply_text(
-            "Tags? Send comma-separated values or 'skip'.",
+            "Теги? Надішліть значення через кому або «Пропустити».",
             reply_markup=skip_cancel_markup(update),
         )
     return ADD_TAGS
@@ -657,10 +689,10 @@ async def add_song_tempo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 async def add_song_tags(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     payload = _pending_song(context)
     text = _message_text(update)
-    payload["tags"] = [] if text.lower() == "skip" else parse_tag_input(text)
+    payload["tags"] = [] if text.lower() == BUTTON_SKIP.lower() else parse_tag_input(text)
     if update.effective_message is not None:
         await update.effective_message.reply_text(
-            "Notes? Send text or 'skip'.",
+            "Нотатки? Надішліть текст або «Пропустити».",
             reply_markup=skip_cancel_markup(update),
         )
     return ADD_NOTES
@@ -669,10 +701,10 @@ async def add_song_tags(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
 async def add_song_notes(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     payload = _pending_song(context)
     text = _message_text(update)
-    payload["notes"] = None if text.lower() == "skip" else text
+    payload["notes"] = None if text.lower() == BUTTON_SKIP.lower() else text
     if update.effective_message is not None:
         await update.effective_message.reply_text(
-            "Arrangement notes? Send text or 'skip'.",
+            "Нотатки аранжування? Надішліть текст або «Пропустити».",
             reply_markup=skip_cancel_markup(update),
         )
     return ADD_ARRANGEMENT_NOTES
@@ -681,7 +713,7 @@ async def add_song_notes(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 async def add_song_arrangement_notes(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     payload = _pending_song(context)
     text = _message_text(update)
-    arrangement_notes = None if text.lower() == "skip" else text
+    arrangement_notes = None if text.lower() == BUTTON_SKIP.lower() else text
     service = get_song_service(context)
     try:
         song = await service.create_song(
@@ -706,7 +738,7 @@ async def add_song_arrangement_notes(update: Update, context: ContextTypes.DEFAU
     _user_state(context).pop(PENDING_SONG_KEY, None)
     if update.effective_message is not None:
         await update.effective_message.reply_text(
-            "Created song:\n" + format_song(song),
+            "Пісню створено:\n" + format_song(song),
             reply_markup=home_menu_markup(update, context) or ReplyKeyboardRemove(),
         )
     return ConversationHandler.END
@@ -720,7 +752,7 @@ async def edit_song_start(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
     song_id = _parse_song_id(context.args or [])
     if song_id is None:
-        await update.effective_message.reply_text("Usage: /editsong <id>")
+        await update.effective_message.reply_text("Використання: /editsong <id_пісні>")
         return ConversationHandler.END
     return await _start_edit_song(update, context, song_id)
 
@@ -733,7 +765,9 @@ async def edit_song_start_from_callback(update: Update, context: ContextTypes.DE
     song_id = _song_id_from_callback(query.data, prefix="edit:start:")
     if song_id is None:
         if update.effective_message is not None:
-            await update.effective_message.reply_text("Could not parse song selection for editing.")
+            await update.effective_message.reply_text(
+                "Не вдалося розпізнати вибір пісні для редагування."
+            )
         return ConversationHandler.END
     return await _start_edit_song(update, context, song_id)
 
@@ -755,13 +789,13 @@ async def _start_edit_song(
 
     _user_state(context)[EDIT_SONG_ID_KEY] = song_id
     await update.effective_message.reply_text(
-        "Editing song:\n"
+        "Редагування пісні:\n"
         + format_song(song)
-        + "\n\nCurrent editable fields:\n"
+        + "\n\nПоточні поля для редагування:\n"
         + _edit_field_previews(song)
-        + "\n\nWhich field? Choose one of: "
+        + "\n\nЯке поле змінити? Оберіть одне з: "
         + _editable_field_list()
-        + ".\nTap Cancel to stop.",
+        + ".\nНатисніть «Скасувати», щоб зупинити.",
         reply_markup=cancel_markup(update),
     )
     return EDIT_FIELD
@@ -770,10 +804,10 @@ async def _start_edit_song(
 async def edit_song_field(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     if update.effective_message is None:
         return ConversationHandler.END
-    field_name = _message_text(update).lower()
-    if field_name not in EDIT_FIELD_SPECS:
+    field_name = _resolve_edit_field(_message_text(update))
+    if field_name is None:
         await update.effective_message.reply_text(
-            "Invalid field. Choose one of: " + _editable_field_list() + ".",
+            "Невірне поле. Оберіть одне з: " + _editable_field_list() + ".",
             reply_markup=cancel_markup(update),
         )
         return EDIT_FIELD
@@ -782,7 +816,7 @@ async def edit_song_field(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     song_id = state.get(EDIT_SONG_ID_KEY)
     if not isinstance(song_id, int):
         await update.effective_message.reply_text(
-            "Edit state was lost. Start again from the song details screen.",
+            "Стан редагування втрачено. Почніть знову з екрана деталей пісні.",
             reply_markup=home_menu_markup(update, context) or ReplyKeyboardRemove(),
         )
         return ConversationHandler.END
@@ -805,13 +839,13 @@ async def edit_song_value(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     field_name = state.get(EDIT_FIELD_KEY)
     if not isinstance(song_id, int) or not isinstance(field_name, str):
         await update.effective_message.reply_text(
-            "Edit state was lost. Start again from the song details screen.",
+            "Стан редагування втрачено. Почніть знову з екрана деталей пісні.",
             reply_markup=home_menu_markup(update, context) or ReplyKeyboardRemove(),
         )
         return ConversationHandler.END
     if field_name not in EDIT_FIELD_SPECS:
         await update.effective_message.reply_text(
-            "Edit state was lost. Start again from the song details screen.",
+            "Стан редагування втрачено. Почніть знову з екрана деталей пісні.",
             reply_markup=home_menu_markup(update, context) or ReplyKeyboardRemove(),
         )
         return ConversationHandler.END
@@ -845,7 +879,7 @@ async def edit_song_value(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     state.pop(EDIT_SONG_ID_KEY, None)
     state.pop(EDIT_FIELD_KEY, None)
     await update.effective_message.reply_text(
-        "Updated song:\n" + format_song(song),
+        "Пісню оновлено:\n" + format_song(song),
         reply_markup=home_menu_markup(update, context) or ReplyKeyboardRemove(),
     )
     return ConversationHandler.END
@@ -863,7 +897,7 @@ def _pending_song(context: ContextTypes.DEFAULT_TYPE) -> dict[str, object]:
 def _build_update_payload(field_name: str, raw_value: str) -> SongUpdate:
     spec = EDIT_FIELD_SPECS.get(field_name)
     if spec is None:
-        raise ValueError(f"Unsupported field: {field_name}")
+        raise ValueError(f"Непідтримуване поле: {field_name}")
     return spec.parse_input(raw_value)
 
 

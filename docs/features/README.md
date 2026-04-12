@@ -12,3 +12,4 @@ This directory holds implementation notes for shipped features and feature fixes
 
 - [Button navigation cleanup](button-navigation-cleanup.md)
 - [Song artist and source URL split](song-artist-source-url-split.md)
+- [Ukrainian-only bot localization](ukrainian-localization.md)

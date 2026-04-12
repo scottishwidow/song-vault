@@ -19,6 +19,11 @@ class _MissingType:
 
 
 MISSING: Final = _MissingType()
+FIELD_LABELS: Final = {
+    "title": "назва",
+    "artist": "виконавець",
+    "key": "тональність",
+}
 
 
 @dataclass(slots=True)
@@ -88,7 +93,8 @@ def parse_tag_input(raw_value: str) -> list[str]:
 def _clean_required(value: str, field_name: str) -> str:
     cleaned = value.strip()
     if not cleaned:
-        raise ValueError(f"{field_name} is required.")
+        field_label = FIELD_LABELS.get(field_name, field_name)
+        raise ValueError(f"Поле «{field_label}» є обов'язковим.")
     return cleaned
 
 
@@ -103,7 +109,7 @@ def _clean_capo(capo: int | None) -> int | None:
     if capo is None:
         return None
     if capo <= 0:
-        raise ValueError("Capo must be a positive integer.")
+        raise ValueError("Каподастр має бути додатним цілим числом.")
     return capo
 
 
@@ -140,7 +146,7 @@ class SongService:
         async with self._session_factory() as session:
             song = await session.get(Song, song_id)
             if song is None:
-                raise SongNotFoundError(f"Song {song_id} was not found.")
+                raise SongNotFoundError(f"Пісню {song_id} не знайдено.")
             return song
 
     async def create_song(self, payload: SongCreate) -> Song:
@@ -167,12 +173,12 @@ class SongService:
     async def update_song(self, song_id: int, payload: SongUpdate) -> Song:
         updates = payload.values()
         if not updates:
-            raise ValueError("At least one field must be updated.")
+            raise ValueError("Потрібно оновити принаймні одне поле.")
 
         async with self._session_factory() as session:
             song = await session.get(Song, song_id)
             if song is None:
-                raise SongNotFoundError(f"Song {song_id} was not found.")
+                raise SongNotFoundError(f"Пісню {song_id} не знайдено.")
 
             for field_name, raw_value in updates.items():
                 value = raw_value

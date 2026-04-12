@@ -42,7 +42,7 @@ async def unknown_command(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     del context
     if update.effective_message is not None:
         await update.effective_message.reply_text(
-            "Unsupported command. Use the menu buttons or send /start."
+            "Невідома команда. Скористайтеся кнопками меню або надішліть /start."
         )
 
 
