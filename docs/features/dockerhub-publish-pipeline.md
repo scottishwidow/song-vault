@@ -12,6 +12,7 @@ Adds a deployment pipeline that builds and publishes the bot Docker image to Doc
 - Added Docker Hub login and image publish steps only (no runtime deploy target yet).
 - Added Docker metadata tagging for git tags only.
 - Enforced Docker image tag parity with the pushed Git tag (for example, `v1.2.3` -> `v1.2.3`).
+- Added explicit Docker Buildx setup so GitHub Actions cache export/import (`type=gha`) works with the Buildx container driver.
 - Configured GitHub Actions cache for Docker Buildx layers.
 
 ## Security and reproducibility
@@ -20,6 +21,7 @@ Adds a deployment pipeline that builds and publishes the bot Docker image to Doc
   - `actions/checkout@v6.0.1`
   - `docker/login-action@v3.7.0`
   - `docker/metadata-action@v5.10.0`
+  - `docker/setup-buildx-action@v3.11.1`
   - `docker/build-push-action@v6.19.0`
 
 ## Required GitHub configuration
