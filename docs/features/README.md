@@ -11,5 +11,6 @@ This directory holds implementation notes for shipped features and feature fixes
 ## Current status
 
 - [Button navigation cleanup](button-navigation-cleanup.md)
+- [Docker Hub publish pipeline](dockerhub-publish-pipeline.md)
 - [Song artist and source URL split](song-artist-source-url-split.md)
 - [Ukrainian-only bot localization](ukrainian-localization.md)
