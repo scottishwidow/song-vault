@@ -77,6 +77,23 @@ TEST_DATABASE_URL=postgresql+asyncpg://song_vault:song_vault@localhost:5432/song
 uv run pre-commit run --all-files
 ```
 
+## Docker Hub publish pipeline
+
+The repository includes a GitHub Actions workflow at `.github/workflows/docker-publish.yml` that builds and pushes the app image to Docker Hub on:
+
+- pushes of Git tags matching `v*`
+
+The published Docker tag is the same as the Git tag that triggered the workflow (for example, pushing `v1.2.3` publishes the Docker tag `v1.2.3`).
+
+Set these GitHub Actions secrets:
+
+- `DOCKERHUB_USERNAME`
+- `DOCKERHUB_TOKEN` (Docker Hub access token)
+
+Optional repository variable:
+
+- `DOCKERHUB_IMAGE` (defaults to `<DOCKERHUB_USERNAME>/song-vault`)
+
 ## Environment variables
 
 - `TELEGRAM_BOT_TOKEN`: bot token from BotFather
