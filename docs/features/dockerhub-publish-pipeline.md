@@ -8,15 +8,10 @@ Adds a deployment pipeline that builds and publishes the bot Docker image to Doc
 
 - Added `.github/workflows/docker-publish.yml`.
 - Triggers:
-  - push to `main`
-  - push of tags matching `v*`
-  - manual `workflow_dispatch`
+  - push of Git version tags matching `v*`
 - Added Docker Hub login and image publish steps only (no runtime deploy target yet).
-- Added Docker metadata tagging for:
-  - branch refs
-  - git tags
-  - commit SHA
-  - `latest` on default branch
+- Added Docker metadata tagging for git tags only.
+- Enforced Docker image tag parity with the pushed Git tag (for example, `v1.2.3` -> `v1.2.3`).
 - Configured GitHub Actions cache for Docker Buildx layers.
 
 ## Security and reproducibility

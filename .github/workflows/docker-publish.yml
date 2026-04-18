@@ -2,11 +2,8 @@ name: Publish Docker Image
 
 on:
   push:
-    branches:
-      - main
     tags:
-      - "v.*.*"
-  workflow_dispatch:
+      - "v*"
 
 permissions:
   contents: read
@@ -33,10 +30,7 @@ jobs:
         with:
           images: ${{ env.IMAGE_NAME }}
           tags: |
-            type=ref,event=branch
             type=ref,event=tag
-            type=sha
-            type=raw,value=latest,enable={{is_default_branch}}
 
       - name: Build and push image
         uses: docker/build-push-action@ee4ca427a2f43b6a16632044ca514c076267da23 # v6.19.0

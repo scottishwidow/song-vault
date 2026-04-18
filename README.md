@@ -81,9 +81,9 @@ uv run pre-commit run --all-files
 
 The repository includes a GitHub Actions workflow at `.github/workflows/docker-publish.yml` that builds and pushes the app image to Docker Hub on:
 
-- pushes to `main`
-- pushes of tags matching `v*`
-- manual workflow dispatch
+- pushes of Git tags matching `v*`
+
+The published Docker tag is the same as the Git tag that triggered the workflow (for example, pushing `v1.2.3` publishes the Docker tag `v1.2.3`).
 
 Set these GitHub Actions secrets:
 
