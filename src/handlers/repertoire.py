@@ -5,7 +5,7 @@ from collections.abc import Callable, Coroutine
 from dataclasses import dataclass
 from typing import Any, cast
 
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardRemove, Update
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import (
     BaseHandler,
     CallbackQueryHandler,
@@ -780,7 +780,7 @@ async def edit_song_field(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         return ConversationHandler.END
     song_id, field_name = field_payload
 
-    state = _user_state(context)
+    state = user_state(context)
     state[EDIT_SONG_ID_KEY] = song_id
     state[EDIT_FIELD_KEY] = field_name
     await query.edit_message_reply_markup(reply_markup=None)
@@ -807,8 +807,8 @@ async def edit_song_cancel_from_callback(
 
 
 def _clear_edit_state(context: ContextTypes.DEFAULT_TYPE) -> None:
-    _user_state(context).pop(EDIT_SONG_ID_KEY, None)
-    _user_state(context).pop(EDIT_FIELD_KEY, None)
+    user_state(context).pop(EDIT_SONG_ID_KEY, None)
+    user_state(context).pop(EDIT_FIELD_KEY, None)
 
 
 def _edit_field_from_callback(data: str | None) -> tuple[int, str] | None:
