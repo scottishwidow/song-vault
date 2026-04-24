@@ -3,10 +3,18 @@ from __future__ import annotations
 from collections.abc import Callable, Coroutine, Sequence
 from typing import Any, cast
 
-from telegram import ReplyKeyboardMarkup, ReplyKeyboardRemove, Update
+from telegram import (
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    ReplyKeyboardMarkup,
+    ReplyKeyboardRemove,
+    Update,
+)
 from telegram.ext import BaseHandler, ContextTypes, MessageHandler, filters
 
 from handlers.ui import CANCEL_BUTTON_PATTERN, home_menu_markup
+
+NAV_HOME_CALLBACK = "nav:home"
 
 
 def user_state(context: ContextTypes.DEFAULT_TYPE) -> dict[str, object]:
@@ -63,6 +71,40 @@ def cancel_message_fallback(
     callback: Callable[[Update, ContextTypes.DEFAULT_TYPE], Coroutine[Any, Any, object]],
 ) -> BaseHandler:
     return MessageHandler(cancel_message_filter(), callback)
+
+
+def song_outcome_keyboard(
+    *,
+    song_id: int,
+    page: int,
+    list_mode_short: str = "b",
+) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton(
+                    "Деталі",
+                    callback_data=f"song:detail:{song_id}:{page}",
+                ),
+                InlineKeyboardButton(
+                    "Список",
+                    callback_data=f"browser:page:{list_mode_short}:{page}",
+                ),
+                InlineKeyboardButton("Головна", callback_data=NAV_HOME_CALLBACK),
+            ]
+        ]
+    )
+
+
+def backup_outcome_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton("Меню резервних копій", callback_data="backup:menu"),
+                InlineKeyboardButton("Головна", callback_data=NAV_HOME_CALLBACK),
+            ]
+        ]
+    )
 
 
 def home_or_remove_markup(

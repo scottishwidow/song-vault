@@ -9,7 +9,14 @@ from bot.runtime import get_song_service
 from handlers.backup import export_backup_command
 from handlers.charts import send_chart_for_song_id
 from handlers.common import help_command, send_home_screen
-from handlers.conversation import parse_callback_int, parse_callback_int_pair, user_state
+from handlers.conversation import (
+    NAV_HOME_CALLBACK,
+    home_or_remove_markup,
+    parse_callback_int,
+    parse_callback_int_pair,
+    song_outcome_keyboard,
+    user_state,
+)
 from handlers.repertoire import format_song, tags_command
 from handlers.ui import (
     BUTTON_CANCEL,
@@ -43,6 +50,7 @@ class BrowserState(TypedDict):
     mode: str
     title: str
     items: list[BrowserItem]
+    current_page: int
 
 
 async def menu_text_router(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -162,6 +170,12 @@ async def navigation_callback_router(update: Update, context: ContextTypes.DEFAU
         await _archive_song_from_detail(update, context, song_id=song_id, page=page)
         return
 
+    if data == NAV_HOME_CALLBACK:
+        await query.answer()
+        _reset_navigation_state(context)
+        await send_home_screen(update, context)
+        return
+
     if data.startswith("song:archive:"):
         await query.answer()
         archive_payload = parse_callback_int_pair(data, prefix="song:archive:")
@@ -190,7 +204,10 @@ async def navigation_callback_router(update: Update, context: ContextTypes.DEFAU
 def build_navigation_callback_handler() -> CallbackQueryHandler:
     return CallbackQueryHandler(
         navigation_callback_router,
-        pattern=r"^(browser:|song:(detail|view|archive|archiveconfirm):|backup:(menu|export|close)$)",
+        pattern=(
+            r"^(browser:|song:(detail|view|archive|archiveconfirm):|"
+            r"backup:(menu|export|close)|nav:home)$"
+        ),
     )
 
 
@@ -225,6 +242,7 @@ async def show_song_browser(
         "mode": "browse",
         "title": title,
         "items": _browser_items(songs),
+        "current_page": 0,
     }
     user_state(context)[SONG_BROWSER_STATE_KEY] = state
     await _render_browser_page(update, context, mode="browse", page=0, edit=False)
@@ -243,6 +261,7 @@ async def show_upload_target_picker(update: Update, context: ContextTypes.DEFAUL
         "mode": "upload",
         "title": "Оберіть пісню для завантаження акордів",
         "items": _browser_items(songs),
+        "current_page": 0,
     }
     user_state(context)[SONG_BROWSER_STATE_KEY] = state
     await _render_browser_page(update, context, mode="upload", page=0, edit=False)
@@ -286,18 +305,14 @@ async def _render_browser_page(
     edit: bool,
 ) -> None:
     browser_state = _active_browser_state(context)
-    if browser_state is None:
-        if update.callback_query is not None:
-            await update.callback_query.edit_message_text("Сесія перегляду пісень завершилася.")
-        elif update.effective_message is not None:
-            await update.effective_message.reply_text("Сесія перегляду пісень завершилася.")
-        return
-    if browser_state["mode"] != mode:
-        if update.callback_query is not None:
-            await update.callback_query.edit_message_text(
-                "Режим перегляду пісень не синхронізовано."
-            )
-        return
+    if browser_state is None or browser_state["mode"] != mode:
+        browser_state = await _rebuild_browser_state(context, mode=mode)
+        if browser_state is None:
+            if update.callback_query is not None:
+                await update.callback_query.edit_message_text("Сесія перегляду пісень завершилася.")
+            elif update.effective_message is not None:
+                await update.effective_message.reply_text("Сесія перегляду пісень завершилася.")
+            return
 
     items = browser_state["items"]
     total = len(items)
@@ -310,6 +325,7 @@ async def _render_browser_page(
 
     total_pages = (total + BROWSER_PAGE_SIZE - 1) // BROWSER_PAGE_SIZE
     normalized_page = min(max(page, 0), total_pages - 1)
+    browser_state["current_page"] = normalized_page
     start = normalized_page * BROWSER_PAGE_SIZE
     end = start + BROWSER_PAGE_SIZE
     page_items = items[start:end]
@@ -474,12 +490,18 @@ async def _archive_song_from_detail(
         await query.edit_message_text(str(error))
         return
 
-    keyboard = InlineKeyboardMarkup(
-        [[InlineKeyboardButton("Назад до результатів", callback_data=f"browser:page:b:{page}")]]
-    )
-    await query.edit_message_text(
+    if update.effective_message is None:
+        await query.edit_message_text(f"Пісню #{song.id} архівовано: {song.title}")
+        return
+
+    await query.edit_message_reply_markup(reply_markup=None)
+    await update.effective_message.reply_text(
         f"Пісню #{song.id} архівовано: {song.title}",
-        reply_markup=keyboard,
+        reply_markup=home_or_remove_markup(update, context),
+    )
+    await update.effective_message.reply_text(
+        "Що далі?",
+        reply_markup=song_outcome_keyboard(song_id=song.id, page=page, list_mode_short="b"),
     )
 
 
@@ -502,8 +524,30 @@ def _active_browser_state(context: ContextTypes.DEFAULT_TYPE) -> BrowserState | 
     if isinstance(value, dict):
         state = cast(BrowserState, value)
         if "mode" in state and "title" in state and "items" in state:
+            if not isinstance(state.get("current_page"), int):
+                state["current_page"] = 0
             return state
     return None
+
+
+async def _rebuild_browser_state(
+    context: ContextTypes.DEFAULT_TYPE,
+    *,
+    mode: str,
+) -> BrowserState | None:
+    if mode not in {"browse", "upload"}:
+        return None
+    service = get_song_service(context)
+    songs = await service.list_songs()
+    title = "Активні пісні" if mode == "browse" else "Оберіть пісню для завантаження акордів"
+    state: BrowserState = {
+        "mode": mode,
+        "title": title,
+        "items": _browser_items(songs),
+        "current_page": 0,
+    }
+    user_state(context)[SONG_BROWSER_STATE_KEY] = state
+    return state
 
 
 def _truncate_label(value: str, limit: int = 28) -> str:
