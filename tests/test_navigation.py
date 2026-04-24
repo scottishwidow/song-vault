@@ -8,8 +8,15 @@ import pytest
 
 from bot.runtime import SETTINGS_KEY, SONG_SERVICE_KEY
 from config.settings import Settings
-from handlers.navigation import SEARCH_PENDING_KEY, SONG_BROWSER_STATE_KEY, menu_text_router
-from handlers.navigation import navigation_callback_router as navigation_callback_router
+from handlers.navigation import (
+    SEARCH_PENDING_KEY,
+    SONG_BROWSER_STATE_KEY,
+    build_navigation_callback_handler,
+    menu_text_router,
+)
+from handlers.navigation import (
+    navigation_callback_router as navigation_callback_router,
+)
 from handlers.ui import MENU_SEARCH, MENU_SONGS, MENU_START
 from models.song import Song, SongStatus
 
@@ -97,6 +104,22 @@ async def test_menu_songs_button_opens_song_browser() -> None:
     song_service = SimpleNamespace(list_songs=AsyncMock(return_value=[build_song()]))
     context = build_context(song_service=song_service)
     update, reply = build_message_update(text=MENU_SONGS)
+
+    await menu_text_router(update, context)
+
+    assert SONG_BROWSER_STATE_KEY in context.user_data
+    reply.assert_awaited_once()
+    message_text = reply.await_args.args[0]
+    assert "Активні пісні (1)" in message_text
+    keyboard = reply.await_args.kwargs["reply_markup"]
+    assert keyboard.inline_keyboard[0][0].callback_data == "song:detail:5:0"
+
+
+@pytest.mark.asyncio
+async def test_plain_songs_label_opens_song_browser() -> None:
+    song_service = SimpleNamespace(list_songs=AsyncMock(return_value=[build_song()]))
+    context = build_context(song_service=song_service)
+    update, reply = build_message_update(text="Пісні")
 
     await menu_text_router(update, context)
 
@@ -267,6 +290,22 @@ async def test_stale_upload_page_callback_recovers_state_and_renders_page() -> N
     assert context.user_data[SONG_BROWSER_STATE_KEY]["mode"] == "upload"
     keyboard = query.edit_message_text.await_args.kwargs["reply_markup"]
     assert keyboard.inline_keyboard[0][0].callback_data == "upload:start:5"
+
+
+def test_navigation_callback_handler_matches_song_and_browser_callbacks() -> None:
+    handler = build_navigation_callback_handler()
+
+    assert handler.pattern.match("song:detail:5:0")
+    assert handler.pattern.match("song:view:5")
+    assert handler.pattern.match("song:archive:5:0")
+    assert handler.pattern.match("song:archiveconfirm:5:0")
+    assert handler.pattern.match("browser:page:b:0")
+    assert handler.pattern.match("browser:close")
+    assert handler.pattern.match("backup:menu")
+    assert handler.pattern.match("backup:export")
+    assert handler.pattern.match("backup:close")
+    assert handler.pattern.match("nav:home")
+    assert not handler.pattern.match("backup:import:start")
 
 
 @pytest.mark.asyncio
