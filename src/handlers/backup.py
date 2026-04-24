@@ -1,9 +1,8 @@
 from __future__ import annotations
 
 from io import BytesIO
-from typing import cast
 
-from telegram import InputFile, ReplyKeyboardRemove, Update
+from telegram import InputFile, Update
 from telegram.ext import (
     CallbackQueryHandler,
     ContextTypes,
@@ -14,7 +13,13 @@ from telegram.ext import (
 
 from bot.runtime import get_backup_service
 from handlers.common import ensure_admin, send_home_screen
-from handlers.ui import CANCEL_BUTTON_PATTERN, cancel_markup, home_menu_markup
+from handlers.conversation import (
+    cancel_message_fallback,
+    conversation_message_filter,
+    home_or_remove_markup,
+    user_state,
+)
+from handlers.ui import cancel_markup
 from services.repertoire_backup_service import BackupValidationError
 from storage.chart_storage import ChartStorageError
 
@@ -53,7 +58,7 @@ async def import_backup_start(update: Update, context: ContextTypes.DEFAULT_TYPE
     if update.effective_message is None:
         return ConversationHandler.END
 
-    _user_state(context)[IMPORT_BACKUP_STATE_KEY] = {}
+    user_state(context)[IMPORT_BACKUP_STATE_KEY] = {}
     await update.effective_message.reply_text(
         "Надішліть .zip файл резервної копії для імпорту або натисніть «Скасувати».",
         reply_markup=cancel_markup(update),
@@ -96,20 +101,20 @@ async def import_backup_file(update: Update, context: ContextTypes.DEFAULT_TYPE)
         await update.effective_message.reply_text(f"Помилка імпорту резервної копії: {error}")
         return ConversationHandler.END
 
-    _user_state(context).pop(IMPORT_BACKUP_STATE_KEY, None)
+    user_state(context).pop(IMPORT_BACKUP_STATE_KEY, None)
     await update.effective_message.reply_text(
         (
             "Імпорт резервної копії завершено.\n"
             f"Відновлено пісень: {summary.song_count}\n"
             f"Відновлено акордів: {summary.chart_count}"
         ),
-        reply_markup=home_menu_markup(update, context) or ReplyKeyboardRemove(),
+        reply_markup=home_or_remove_markup(update, context),
     )
     return ConversationHandler.END
 
 
 async def cancel_import_backup(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    _user_state(context).pop(IMPORT_BACKUP_STATE_KEY, None)
+    user_state(context).pop(IMPORT_BACKUP_STATE_KEY, None)
     await send_home_screen(update, context, prefix="Скасовано.")
     return ConversationHandler.END
 
@@ -125,22 +130,12 @@ def build_import_backup_handler() -> ConversationHandler:
         states={
             IMPORT_BACKUP_UPLOAD: [
                 MessageHandler(
-                    filters.ALL
-                    & ~filters.COMMAND
-                    & ~filters.Regex(CANCEL_BUTTON_PATTERN)
-                    & filters.UpdateType.MESSAGE,
+                    conversation_message_filter(filters.ALL),
                     import_backup_file,
                 )
             ],
         },
-        fallbacks=[
-            MessageHandler(
-                filters.Regex(CANCEL_BUTTON_PATTERN)
-                & ~filters.COMMAND
-                & filters.UpdateType.MESSAGE,
-                cancel_import_backup,
-            ),
-        ],
+        fallbacks=[cancel_message_fallback(cancel_import_backup)],
         name="import_backup",
         persistent=False,
     )
@@ -156,7 +151,3 @@ def _looks_like_zip(filename: str | None, mime_type: str | None) -> bool:
             "application/octet-stream",
         }
     return False
-
-
-def _user_state(context: ContextTypes.DEFAULT_TYPE) -> dict[str, object]:
-    return cast(dict[str, object], context.user_data)
