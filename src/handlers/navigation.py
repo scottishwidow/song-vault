@@ -38,6 +38,15 @@ from services.song_service import SongNotFoundError
 BROWSER_PAGE_SIZE = 8
 SEARCH_PENDING_KEY = "search_pending"
 SONG_BROWSER_STATE_KEY = "song_browser_state"
+MENU_TEXT_ALIASES = {
+    MENU_START: {MENU_START, "Головна"},
+    MENU_SONGS: {MENU_SONGS, "Пісні"},
+    MENU_SEARCH: {MENU_SEARCH, "Пошук"},
+    MENU_TAGS: {MENU_TAGS, "Теги"},
+    MENU_HELP: {MENU_HELP, "Допомога"},
+    MENU_UPLOAD_CHART: {MENU_UPLOAD_CHART, "Завантажити гармонію"},
+    MENU_BACKUP: {MENU_BACKUP, "Резервна копія"},
+}
 
 
 class BrowserItem(TypedDict):
@@ -58,39 +67,40 @@ async def menu_text_router(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     if message is None or message.text is None:
         return
     text = message.text.strip()
+    menu_action = _resolve_menu_action(text)
     state = user_state(context)
 
-    if text == MENU_START:
+    if menu_action == MENU_START:
         _reset_navigation_state(context)
         await send_home_screen(update, context)
         return
-    if text == MENU_SONGS:
+    if menu_action == MENU_SONGS:
         _clear_search_pending(context)
         await show_song_browser(update, context)
         return
-    if text == MENU_SEARCH:
+    if menu_action == MENU_SEARCH:
         state[SEARCH_PENDING_KEY] = True
         await message.reply_text(
             "Надішліть текст для пошуку або натисніть «Скасувати».",
             reply_markup=cancel_markup(update),
         )
         return
-    if text == MENU_TAGS:
+    if menu_action == MENU_TAGS:
         _clear_search_pending(context)
         await tags_command(update, context)
         return
-    if text == MENU_HELP:
+    if menu_action == MENU_HELP:
         _clear_search_pending(context)
         await help_command(update, context)
         return
-    if text == MENU_UPLOAD_CHART:
+    if menu_action == MENU_UPLOAD_CHART:
         _clear_search_pending(context)
         if not is_admin_user(update, context):
             await message.reply_text("Для цієї дії потрібні права адміністратора.")
             return
         await show_upload_target_picker(update, context)
         return
-    if text == MENU_BACKUP:
+    if menu_action == MENU_BACKUP:
         _clear_search_pending(context)
         if not is_admin_user(update, context):
             await message.reply_text("Для цієї дії потрібні права адміністратора.")
@@ -103,7 +113,7 @@ async def menu_text_router(update: Update, context: ContextTypes.DEFAULT_TYPE) -
             _reset_navigation_state(context)
             await send_home_screen(update, context, prefix="Скасовано.")
             return
-        if text in MAIN_MENU_BUTTONS:
+        if menu_action in MAIN_MENU_BUTTONS:
             _clear_search_pending(context)
             await message.reply_text("Для навігації використовуйте кнопки меню.")
             return
@@ -115,6 +125,13 @@ async def menu_text_router(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         "Скористайтеся кнопками меню або натисніть «Головна».",
         reply_markup=home_menu_markup(update, context),
     )
+
+
+def _resolve_menu_action(text: str) -> str | None:
+    for action, aliases in MENU_TEXT_ALIASES.items():
+        if text in aliases:
+            return action
+    return None
 
 
 async def navigation_callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -205,7 +222,8 @@ def build_navigation_callback_handler() -> CallbackQueryHandler:
     return CallbackQueryHandler(
         navigation_callback_router,
         pattern=(
-            r"^(browser:|song:(detail|view|archive|archiveconfirm):|"
+            r"^(browser:(page:[bu]:\d+|close)|"
+            r"song:(detail:\d+:\d+|view:\d+|archive:\d+:\d+|archiveconfirm:\d+:\d+)|"
             r"backup:(menu|export|close)|nav:home)$"
         ),
     )
