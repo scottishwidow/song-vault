@@ -40,6 +40,12 @@ This was applied to:
 - upload-chart flow
 - import-backup flow
 
+## Edit field selection
+
+The edit-song flow now uses inline buttons for choosing which existing field to edit. After an administrator selects a field, the bot keeps the existing Ukrainian prompt and accepts free text only for the new field value.
+
+Editable fields remain limited to the current user-facing song fields: title, artist, source, key, capo, time signature, tempo, tags, and notes. Arrangement notes stay non-user-facing.
+
 ## Testing
 
 Coverage added or updated for:
@@ -50,6 +56,9 @@ Coverage added or updated for:
 - conversation handlers refusing to consume `Cancel` as normal input
 - cancel handlers clearing state and returning the home menu
 - bot startup clearing published Telegram commands
+- edit field selection rendering inline field buttons
+- selected edit fields prompting for values with existing validation copy
+- invalid edit field callbacks and inline edit cancellation
 
 ## Notes
 

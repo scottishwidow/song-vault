@@ -5,7 +5,7 @@ from collections.abc import Callable, Coroutine
 from dataclasses import dataclass
 from typing import Any, cast
 
-from telegram import ReplyKeyboardRemove, Update
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardRemove, Update
 from telegram.ext import (
     BaseHandler,
     CallbackQueryHandler,
@@ -18,6 +18,7 @@ from telegram.ext import (
 from bot.runtime import get_song_service
 from handlers.common import ensure_admin, send_home_screen
 from handlers.ui import (
+    BUTTON_CANCEL,
     BUTTON_SKIP,
     CANCEL_BUTTON_PATTERN,
     MENU_ADD_SONG,
@@ -403,27 +404,34 @@ EDIT_FIELD_SPECS: dict[str, EditFieldSpec] = {
 }
 
 
-def _editable_field_list() -> str:
-    return ", ".join(spec.aliases[0] for spec in EDIT_FIELD_SPECS.values())
-
-
 def _edit_field_previews(song: Song) -> str:
     return "\n".join(
         f"{spec.aliases[0]}: {spec.format_current(song)}" for spec in EDIT_FIELD_SPECS.values()
     )
 
 
+def _edit_field_keyboard(song_id: int) -> InlineKeyboardMarkup:
+    rows: list[list[InlineKeyboardButton]] = []
+    current_row: list[InlineKeyboardButton] = []
+    for field_name, spec in EDIT_FIELD_SPECS.items():
+        current_row.append(
+            InlineKeyboardButton(
+                spec.aliases[0],
+                callback_data=f"edit:field:{song_id}:{field_name}",
+            )
+        )
+        if len(current_row) == 2:
+            rows.append(current_row)
+            current_row = []
+    if current_row:
+        rows.append(current_row)
+    rows.append([InlineKeyboardButton(BUTTON_CANCEL, callback_data="edit:cancel")])
+    return InlineKeyboardMarkup(rows)
+
+
 def _edit_value_prompt(song: Song, field_name: str) -> str:
     spec = EDIT_FIELD_SPECS[field_name]
     return f"{spec.prompt}\nПоточне значення поля «{spec.label}»: {spec.format_current(song)}"
-
-
-def _resolve_edit_field(raw_value: str) -> str | None:
-    normalized = raw_value.strip().lower()
-    for field_name, spec in EDIT_FIELD_SPECS.items():
-        if normalized in spec.aliases:
-            return field_name
-    return None
 
 
 async def _reply_with_edit_value_prompt(
@@ -758,41 +766,71 @@ async def _start_edit_song(
         + format_song(song)
         + "\n\nПоточні поля для редагування:\n"
         + _edit_field_previews(song)
-        + "\n\nЯке поле змінити? Оберіть одне з: "
-        + _editable_field_list()
-        + ".\nНатисніть «Скасувати», щоб зупинити.",
-        reply_markup=cancel_markup(update),
+        + "\n\nЯке поле змінити? Натисніть кнопку нижче."
+        + "\nНатисніть «Скасувати», щоб зупинити.",
+        reply_markup=_edit_field_keyboard(song_id),
     )
     return EDIT_FIELD
 
 
 async def edit_song_field(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    if update.effective_message is None:
+    query = update.callback_query
+    if query is None:
         return ConversationHandler.END
-    field_name = _resolve_edit_field(_message_text(update))
-    if field_name is None:
-        await update.effective_message.reply_text(
-            "Невірне поле. Оберіть одне з: " + _editable_field_list() + ".",
-            reply_markup=cancel_markup(update),
-        )
-        return EDIT_FIELD
+    await query.answer()
+
+    field_payload = _edit_field_from_callback(query.data)
+    if field_payload is None:
+        _clear_edit_state(context)
+        await query.edit_message_text("Не вдалося розпізнати поле для редагування.")
+        return ConversationHandler.END
+    song_id, field_name = field_payload
 
     state = _user_state(context)
-    song_id = state.get(EDIT_SONG_ID_KEY)
-    if not isinstance(song_id, int):
-        await update.effective_message.reply_text(
-            "Стан редагування втрачено. Почніть знову з екрана деталей пісні.",
-            reply_markup=home_menu_markup(update, context) or ReplyKeyboardRemove(),
-        )
-        return ConversationHandler.END
-
+    state[EDIT_SONG_ID_KEY] = song_id
     state[EDIT_FIELD_KEY] = field_name
+    await query.edit_message_reply_markup(reply_markup=None)
     return await _reply_with_edit_value_prompt(
         update,
         context,
         song_id=song_id,
         field_name=field_name,
     )
+
+
+async def edit_song_cancel_from_callback(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+) -> int:
+    query = update.callback_query
+    if query is None:
+        return ConversationHandler.END
+    await query.answer()
+    _clear_edit_state(context)
+    await query.edit_message_reply_markup(reply_markup=None)
+    await send_home_screen(update, context, prefix="Скасовано.")
+    return ConversationHandler.END
+
+
+def _clear_edit_state(context: ContextTypes.DEFAULT_TYPE) -> None:
+    _user_state(context).pop(EDIT_SONG_ID_KEY, None)
+    _user_state(context).pop(EDIT_FIELD_KEY, None)
+
+
+def _edit_field_from_callback(data: str | None) -> tuple[int, str] | None:
+    if not isinstance(data, str):
+        return None
+    parts = data.split(":")
+    if len(parts) != 4 or parts[0] != "edit" or parts[1] != "field":
+        return None
+    try:
+        song_id = int(parts[2])
+    except ValueError:
+        return None
+    field_name = parts[3]
+    if field_name not in EDIT_FIELD_SPECS:
+        return None
+    return song_id, field_name
 
 
 async def edit_song_value(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -944,7 +982,10 @@ def build_edit_song_handler() -> ConversationHandler:
             CallbackQueryHandler(edit_song_start_from_callback, pattern=r"^edit:start:\d+$"),
         ],
         states={
-            EDIT_FIELD: [_text_step(edit_song_field)],
+            EDIT_FIELD: [
+                CallbackQueryHandler(edit_song_field, pattern=r"^edit:field:[^:]+:[^:]+$"),
+                CallbackQueryHandler(edit_song_cancel_from_callback, pattern=r"^edit:cancel$"),
+            ],
             EDIT_VALUE: [_text_step(edit_song_value)],
         },
         fallbacks=_conversation_fallbacks(),

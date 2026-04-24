@@ -38,6 +38,7 @@ from handlers.repertoire import (
     build_add_song_handler,
     build_edit_song_handler,
     cancel_command,
+    edit_song_cancel_from_callback,
     edit_song_field,
     edit_song_start,
     edit_song_value,
@@ -93,6 +94,27 @@ def build_update(*, user_id: int = 1) -> tuple[SimpleNamespace, AsyncMock]:
         effective_chat=SimpleNamespace(type="private"),
     )
     return update, reply
+
+
+def build_callback_update(
+    *,
+    data: str,
+    user_id: int = 1,
+) -> tuple[SimpleNamespace, SimpleNamespace, AsyncMock]:
+    reply = AsyncMock()
+    query = SimpleNamespace(
+        data=data,
+        answer=AsyncMock(),
+        edit_message_reply_markup=AsyncMock(),
+        edit_message_text=AsyncMock(),
+    )
+    update = SimpleNamespace(
+        effective_user=SimpleNamespace(id=user_id),
+        effective_message=SimpleNamespace(reply_text=reply),
+        effective_chat=SimpleNamespace(type="private"),
+        callback_query=query,
+    )
+    return update, query, reply
 
 
 def build_song(
@@ -171,8 +193,12 @@ def test_edit_song_conversation_filters_ignore_edited_messages() -> None:
     message_update = build_telegram_update(edited=False)
     edited_update = build_telegram_update(edited=True)
 
-    for state_handlers in handler.states.values():
+    for state, state_handlers in handler.states.items():
         for state_handler in state_handlers:
+            if state == EDIT_FIELD:
+                assert not bool(state_handler.check_update(message_update))
+                assert not bool(state_handler.check_update(edited_update))
+                continue
             assert bool(state_handler.check_update(message_update))
             assert not bool(state_handler.check_update(edited_update))
 
@@ -453,7 +479,25 @@ async def test_edit_song_start_shows_editable_field_previews() -> None:
     assert "нотатки: Slow intro." in message
     assert "нотатки аранжування:" not in message
     assert "Натисніть «Скасувати», щоб зупинити." in message
-    assert reply.await_args.kwargs["reply_markup"].keyboard[0][0].text == BUTTON_CANCEL
+    keyboard = reply.await_args.kwargs["reply_markup"]
+    labels = [button.text for row in keyboard.inline_keyboard for button in row]
+    callback_data = [button.callback_data for row in keyboard.inline_keyboard for button in row]
+    assert labels == [
+        "назва",
+        "виконавець",
+        "джерело",
+        "тональність",
+        "каподастр",
+        "розмір",
+        "темп",
+        "теги",
+        "нотатки",
+        BUTTON_CANCEL,
+    ]
+    assert "edit:field:5:title" in callback_data
+    assert "edit:field:5:source" in callback_data
+    assert "edit:field:5:tempo" in callback_data
+    assert callback_data[-1] == "edit:cancel"
 
 
 @pytest.mark.asyncio
@@ -510,16 +554,18 @@ async def test_add_song_notes_creates_song_without_arrangement_notes_step() -> N
 
 @pytest.mark.asyncio
 async def test_edit_song_field_shows_prompt_with_current_value() -> None:
-    update, reply = build_update()
+    update, query, reply = build_callback_update(data="edit:field:5:tempo")
     song = build_song()
     song_service = SimpleNamespace(get_song=AsyncMock(return_value=song))
     context = build_context(song_service=song_service)
     context.user_data[EDIT_SONG_ID_KEY] = song.id
-    update.effective_message.text = "темп"
 
     state = await edit_song_field(update, context)
 
     assert state == EDIT_VALUE
+    query.answer.assert_awaited_once()
+    query.edit_message_reply_markup.assert_awaited_once_with(reply_markup=None)
+    assert context.user_data[EDIT_FIELD_KEY] == "tempo"
     message = reply.await_args.args[0]
     assert "Новий темп (BPM)? Надішліть число або «очистити»." in message
     assert "Поточне значення поля «темп»: 72" in message
@@ -528,16 +574,17 @@ async def test_edit_song_field_shows_prompt_with_current_value() -> None:
 
 @pytest.mark.asyncio
 async def test_edit_song_field_accepts_source_field() -> None:
-    update, reply = build_update()
+    update, query, reply = build_callback_update(data="edit:field:5:source")
     song = build_song(source_url="https://example.org/source")
     song_service = SimpleNamespace(get_song=AsyncMock(return_value=song))
     context = build_context(song_service=song_service)
     context.user_data[EDIT_SONG_ID_KEY] = song.id
-    update.effective_message.text = "джерело"
 
     state = await edit_song_field(update, context)
 
     assert state == EDIT_VALUE
+    query.answer.assert_awaited_once()
+    assert context.user_data[EDIT_FIELD_KEY] == "source"
     message = reply.await_args.args[0]
     assert "Нове джерело? Надішліть текст або «очистити»." in message
     assert "Поточне значення поля «джерело»: https://example.org/source" in message
@@ -545,19 +592,39 @@ async def test_edit_song_field_accepts_source_field() -> None:
 
 
 @pytest.mark.asyncio
-async def test_edit_song_field_rejects_unknown_field() -> None:
-    update, reply = build_update()
-    context = build_context()
-    update.effective_message.text = "unsupported"
+async def test_edit_song_field_handles_invalid_callback_data() -> None:
+    update, query, _ = build_callback_update(data="edit:field:5:unsupported")
+    song_service = SimpleNamespace(get_song=AsyncMock())
+    context = build_context(song_service=song_service)
+    context.user_data[EDIT_SONG_ID_KEY] = 5
 
     state = await edit_song_field(update, context)
 
-    assert state == EDIT_FIELD
+    assert state == -1
+    assert EDIT_SONG_ID_KEY not in context.user_data
+    assert EDIT_FIELD_KEY not in context.user_data
+    query.answer.assert_awaited_once()
+    query.edit_message_text.assert_awaited_once_with("Не вдалося розпізнати поле для редагування.")
+    song_service.get_song.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_edit_song_cancel_from_callback_returns_home_menu() -> None:
+    update, query, reply = build_callback_update(data="edit:cancel")
+    context = build_context()
+    context.user_data[EDIT_SONG_ID_KEY] = 5
+    context.user_data[EDIT_FIELD_KEY] = "title"
+
+    state = await edit_song_cancel_from_callback(update, context)
+
+    assert state == -1
+    assert context.user_data == {}
+    query.answer.assert_awaited_once()
+    query.edit_message_reply_markup.assert_awaited_once_with(reply_markup=None)
     assert reply.await_args.args[0] == (
-        "Невірне поле. Оберіть одне з: назва, виконавець, джерело, тональність, "
-        "каподастр, розмір, темп, теги, нотатки."
+        "Скасовано.\nБот готовий.\nКористуйтеся кнопками меню нижче."
     )
-    assert reply.await_args.kwargs["reply_markup"].keyboard[0][0].text == BUTTON_CANCEL
+    assert reply.await_args.kwargs["reply_markup"].keyboard[0][0].text == MENU_START
 
 
 @pytest.mark.asyncio
