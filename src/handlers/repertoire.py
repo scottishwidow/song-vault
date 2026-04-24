@@ -5,7 +5,7 @@ from collections.abc import Callable, Coroutine
 from dataclasses import dataclass
 from typing import Any, cast
 
-from telegram import ReplyKeyboardRemove, Update
+from telegram import Update
 from telegram.ext import (
     BaseHandler,
     CallbackQueryHandler,
@@ -17,12 +17,19 @@ from telegram.ext import (
 
 from bot.runtime import get_song_service
 from handlers.common import ensure_admin, send_home_screen
+from handlers.conversation import (
+    cancel_message_fallback,
+    conversation_message_filter,
+    home_or_remove_markup,
+    parse_callback_int,
+    parse_song_id_arg,
+    reply_state_lost,
+    user_state,
+)
 from handlers.ui import (
     BUTTON_SKIP,
-    CANCEL_BUTTON_PATTERN,
     MENU_ADD_SONG,
     cancel_markup,
-    home_menu_markup,
     skip_cancel_markup,
 )
 from models.song import Song, SongStatus
@@ -207,10 +214,6 @@ def _message_text(update: Update) -> str:
     if message is None or message.text is None:
         return ""
     return message.text.strip()
-
-
-def _user_state(context: ContextTypes.DEFAULT_TYPE) -> dict[str, object]:
-    return cast(dict[str, object], context.user_data)
 
 
 def _parse_required_text(
@@ -439,7 +442,7 @@ async def _reply_with_edit_value_prompt(
     if field_name not in EDIT_FIELD_SPECS:
         await update.effective_message.reply_text(
             "Стан редагування втрачено. Почніть знову з екрана деталей пісні.",
-            reply_markup=home_menu_markup(update, context) or ReplyKeyboardRemove(),
+            reply_markup=home_or_remove_markup(update, context),
         )
         return ConversationHandler.END
 
@@ -515,7 +518,7 @@ async def archive_song_command(update: Update, context: ContextTypes.DEFAULT_TYP
         return
     if update.effective_message is None:
         return
-    song_id = _parse_song_id(context.args or [])
+    song_id = parse_song_id_arg(context.args or [])
     if song_id is None:
         await update.effective_message.reply_text("Використання: /archivesong <id_пісні>")
         return
@@ -530,19 +533,10 @@ async def archive_song_command(update: Update, context: ContextTypes.DEFAULT_TYP
     await update.effective_message.reply_text(f"Пісню #{song.id} архівовано: {song.title}")
 
 
-def _parse_song_id(args: list[str]) -> int | None:
-    if len(args) != 1:
-        return None
-    try:
-        return int(args[0])
-    except ValueError:
-        return None
-
-
 async def cancel_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    _user_state(context).pop(PENDING_SONG_KEY, None)
-    _user_state(context).pop(EDIT_SONG_ID_KEY, None)
-    _user_state(context).pop(EDIT_FIELD_KEY, None)
+    user_state(context).pop(PENDING_SONG_KEY, None)
+    user_state(context).pop(EDIT_SONG_ID_KEY, None)
+    user_state(context).pop(EDIT_FIELD_KEY, None)
     await send_home_screen(update, context, prefix="Скасовано.")
     return ConversationHandler.END
 
@@ -550,7 +544,7 @@ async def cancel_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 async def add_song_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     if not await ensure_admin(update, context):
         return ConversationHandler.END
-    _user_state(context)[PENDING_SONG_KEY] = {}
+    user_state(context)[PENDING_SONG_KEY] = {}
     if update.effective_message is not None:
         await update.effective_message.reply_text(
             "Назва?",
@@ -560,7 +554,7 @@ async def add_song_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
 
 async def add_song_title(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    _user_state(context)[PENDING_SONG_KEY] = {"title": _message_text(update)}
+    user_state(context)[PENDING_SONG_KEY] = {"title": _message_text(update)}
     if update.effective_message is not None:
         await update.effective_message.reply_text(
             "Виконавець?",
@@ -700,11 +694,11 @@ async def add_song_notes(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             await update.effective_message.reply_text(str(error))
         return ConversationHandler.END
 
-    _user_state(context).pop(PENDING_SONG_KEY, None)
+    user_state(context).pop(PENDING_SONG_KEY, None)
     if update.effective_message is not None:
         await update.effective_message.reply_text(
             "Пісню створено:\n" + format_song(song),
-            reply_markup=home_menu_markup(update, context) or ReplyKeyboardRemove(),
+            reply_markup=home_or_remove_markup(update, context),
         )
     return ConversationHandler.END
 
@@ -715,7 +709,7 @@ async def edit_song_start(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     if update.effective_message is None:
         return ConversationHandler.END
 
-    song_id = _parse_song_id(context.args or [])
+    song_id = parse_song_id_arg(context.args or [])
     if song_id is None:
         await update.effective_message.reply_text("Використання: /editsong <id_пісні>")
         return ConversationHandler.END
@@ -727,7 +721,7 @@ async def edit_song_start_from_callback(update: Update, context: ContextTypes.DE
     if query is None:
         return ConversationHandler.END
     await query.answer()
-    song_id = _song_id_from_callback(query.data, prefix="edit:start:")
+    song_id = parse_callback_int(query.data, prefix="edit:start:")
     if song_id is None:
         if update.effective_message is not None:
             await update.effective_message.reply_text(
@@ -752,7 +746,7 @@ async def _start_edit_song(
         await update.effective_message.reply_text(str(error))
         return ConversationHandler.END
 
-    _user_state(context)[EDIT_SONG_ID_KEY] = song_id
+    user_state(context)[EDIT_SONG_ID_KEY] = song_id
     await update.effective_message.reply_text(
         "Редагування пісні:\n"
         + format_song(song)
@@ -777,12 +771,13 @@ async def edit_song_field(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         )
         return EDIT_FIELD
 
-    state = _user_state(context)
+    state = user_state(context)
     song_id = state.get(EDIT_SONG_ID_KEY)
     if not isinstance(song_id, int):
-        await update.effective_message.reply_text(
+        await reply_state_lost(
+            update,
+            context,
             "Стан редагування втрачено. Почніть знову з екрана деталей пісні.",
-            reply_markup=home_menu_markup(update, context) or ReplyKeyboardRemove(),
         )
         return ConversationHandler.END
 
@@ -799,19 +794,21 @@ async def edit_song_value(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     if update.effective_message is None:
         return ConversationHandler.END
 
-    state = _user_state(context)
+    state = user_state(context)
     song_id = state.get(EDIT_SONG_ID_KEY)
     field_name = state.get(EDIT_FIELD_KEY)
     if not isinstance(song_id, int) or not isinstance(field_name, str):
-        await update.effective_message.reply_text(
+        await reply_state_lost(
+            update,
+            context,
             "Стан редагування втрачено. Почніть знову з екрана деталей пісні.",
-            reply_markup=home_menu_markup(update, context) or ReplyKeyboardRemove(),
         )
         return ConversationHandler.END
     if field_name not in EDIT_FIELD_SPECS:
-        await update.effective_message.reply_text(
+        await reply_state_lost(
+            update,
+            context,
             "Стан редагування втрачено. Почніть знову з екрана деталей пісні.",
-            reply_markup=home_menu_markup(update, context) or ReplyKeyboardRemove(),
         )
         return ConversationHandler.END
 
@@ -845,17 +842,17 @@ async def edit_song_value(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     state.pop(EDIT_FIELD_KEY, None)
     await update.effective_message.reply_text(
         "Пісню оновлено:\n" + format_song(song),
-        reply_markup=home_menu_markup(update, context) or ReplyKeyboardRemove(),
+        reply_markup=home_or_remove_markup(update, context),
     )
     return ConversationHandler.END
 
 
 def _pending_song(context: ContextTypes.DEFAULT_TYPE) -> dict[str, object]:
-    payload = _user_state(context).get(PENDING_SONG_KEY)
+    payload = user_state(context).get(PENDING_SONG_KEY)
     if isinstance(payload, dict):
         return payload
     new_payload: dict[str, object] = {}
-    _user_state(context)[PENDING_SONG_KEY] = new_payload
+    user_state(context)[PENDING_SONG_KEY] = new_payload
     return new_payload
 
 
@@ -866,25 +863,8 @@ def _build_update_payload(field_name: str, raw_value: str) -> SongUpdate:
     return spec.parse_input(raw_value)
 
 
-def _song_id_from_callback(data: str | None, *, prefix: str) -> int | None:
-    if not isinstance(data, str):
-        return None
-    if not data.startswith(prefix):
-        return None
-    raw_value = data[len(prefix) :]
-    try:
-        return int(raw_value)
-    except ValueError:
-        return None
-
-
 def _conversation_fallbacks() -> list[BaseHandler]:
-    return [
-        MessageHandler(
-            filters.Regex(CANCEL_BUTTON_PATTERN) & ~filters.COMMAND & filters.UpdateType.MESSAGE,
-            cancel_command,
-        ),
-    ]
+    return [cancel_message_fallback(cancel_command)]
 
 
 def _text_step(
@@ -897,12 +877,7 @@ def _text_step(
 
 
 def _conversation_text_filter() -> filters.BaseFilter:
-    return (
-        filters.TEXT
-        & ~filters.COMMAND
-        & ~filters.Regex(CANCEL_BUTTON_PATTERN)
-        & filters.UpdateType.MESSAGE
-    )
+    return conversation_message_filter()
 
 
 def _menu_entry(
