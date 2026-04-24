@@ -25,6 +25,7 @@ from handlers.charts import (
 )
 from handlers.common import ensure_admin
 from handlers.repertoire import (
+    ADD_KEY,
     ADD_SOURCE,
     EDIT_FIELD,
     EDIT_FIELD_KEY,
@@ -33,6 +34,7 @@ from handlers.repertoire import (
     RESULT_MESSAGE_CHAR_LIMIT,
     add_song_artist,
     add_song_notes,
+    add_song_source,
     build_add_song_handler,
     build_edit_song_handler,
     cancel_command,
@@ -465,6 +467,19 @@ async def test_add_song_artist_prompts_for_source_with_original_link_text() -> N
 
     assert state == ADD_SOURCE
     assert reply.await_args.args[0] == "Джерело? (Посилання на оригінал)"
+
+
+@pytest.mark.asyncio
+async def test_add_song_source_prompts_for_original_key() -> None:
+    update, reply = build_update()
+    context = build_context()
+    context.user_data["pending_song"] = {"title": "Amazing Grace", "artist": "Traditional"}
+    update.effective_message.text = "Пропустити"
+
+    state = await add_song_source(update, context)
+
+    assert state == ADD_KEY
+    assert reply.await_args.args[0] == "Оригінальна тональність?"
 
 
 @pytest.mark.asyncio

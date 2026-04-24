@@ -586,7 +586,7 @@ async def add_song_source(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     payload["source_url"] = None if text.lower() == BUTTON_SKIP.lower() else text
     if update.effective_message is not None:
         await update.effective_message.reply_text(
-            "Тональність?",
+            "Оригінальна тональність?",
             reply_markup=cancel_markup(update),
         )
     return ADD_KEY
