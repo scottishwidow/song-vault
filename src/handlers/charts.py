@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from io import BytesIO
 from typing import cast
-from urllib.parse import urlparse
 
 from telegram import InputFile, ReplyKeyboardRemove, Update
 from telegram.ext import (
@@ -20,7 +19,7 @@ from services.chart_service import ChartFile, ChartUpload, SongChartNotFoundErro
 from services.song_service import SongNotFoundError
 from storage.chart_storage import ChartStorageError
 
-UPLOAD_MEDIA, UPLOAD_SOURCE_URL, UPLOAD_CHART_KEY = range(3)
+UPLOAD_MEDIA, UPLOAD_CHART_KEY = range(2)
 UPLOAD_CHART_STATE_KEY = "upload_chart_state"
 
 
@@ -124,7 +123,7 @@ async def upload_chart_media(update: Update, context: ContextTypes.DEFAULT_TYPE)
     song_id = state.get("song_id")
     if not isinstance(song_id, int):
         await update.effective_message.reply_text(
-            "Стан завантаження втрачено. Почніть знову через «Завантажити акорди».",
+            "Стан завантаження втрачено. Почніть знову через «Завантажити гармонію».",
             reply_markup=home_menu_markup(update, context) or ReplyKeyboardRemove(),
         )
         return ConversationHandler.END
@@ -154,30 +153,6 @@ async def upload_chart_media(update: Update, context: ContextTypes.DEFAULT_TYPE)
     state["content_type"] = content_type
     state["filename"] = filename
     await update.effective_message.reply_text(
-        "Джерело (URL) необов'язкове. Надішліть http(s)-посилання або «Пропустити».",
-        reply_markup=cancel_markup(update),
-    )
-    return UPLOAD_SOURCE_URL
-
-
-async def upload_chart_source_url(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    if update.effective_message is None:
-        return ConversationHandler.END
-
-    text = (update.effective_message.text or "").strip()
-    if text.lower() == BUTTON_SKIP.lower():
-        source_url: str | None = None
-    else:
-        if not _looks_like_http_url(text):
-            await update.effective_message.reply_text(
-                "Посилання має починатися з http:// або https://, або надішліть «Пропустити»."
-            )
-            return UPLOAD_SOURCE_URL
-        source_url = text
-
-    state = _upload_state(context)
-    state["source_url"] = source_url
-    await update.effective_message.reply_text(
         "Тональність акордів необов'язкова. Надішліть текст або «Пропустити».",
         reply_markup=cancel_markup(update),
     )
@@ -194,7 +169,6 @@ async def upload_chart_chart_key(update: Update, context: ContextTypes.DEFAULT_T
     content = state.get("content")
     content_type = state.get("content_type")
     filename = state.get("filename")
-    source_url = state.get("source_url")
     if (
         not isinstance(song_id, int)
         or not isinstance(content, bytes)
@@ -202,7 +176,7 @@ async def upload_chart_chart_key(update: Update, context: ContextTypes.DEFAULT_T
         or not isinstance(filename, str)
     ):
         await update.effective_message.reply_text(
-            "Стан завантаження втрачено. Почніть знову через «Завантажити акорди».",
+            "Стан завантаження втрачено. Почніть знову через «Завантажити гармонію».",
             reply_markup=home_menu_markup(update, context) or ReplyKeyboardRemove(),
         )
         return ConversationHandler.END
@@ -216,7 +190,7 @@ async def upload_chart_chart_key(update: Update, context: ContextTypes.DEFAULT_T
                 original_filename=filename,
                 content_type=content_type,
                 content=content,
-                source_url=source_url if isinstance(source_url, str) else None,
+                source_url=None,
                 chart_key=chart_key,
             ),
         )
@@ -253,15 +227,6 @@ def build_upload_chart_handler() -> ConversationHandler:
                     upload_chart_media,
                 )
             ],
-            UPLOAD_SOURCE_URL: [
-                MessageHandler(
-                    filters.TEXT
-                    & ~filters.COMMAND
-                    & ~filters.Regex(CANCEL_BUTTON_PATTERN)
-                    & filters.UpdateType.MESSAGE,
-                    upload_chart_source_url,
-                )
-            ],
             UPLOAD_CHART_KEY: [
                 MessageHandler(
                     filters.TEXT
@@ -292,11 +257,6 @@ def _parse_song_id(args: list[str]) -> int | None:
         return int(args[0])
     except ValueError:
         return None
-
-
-def _looks_like_http_url(value: str) -> bool:
-    parsed = urlparse(value)
-    return parsed.scheme in {"http", "https"} and bool(parsed.netloc)
 
 
 def _song_id_from_callback(data: str | None, *, prefix: str) -> int | None:

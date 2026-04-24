@@ -16,18 +16,25 @@ from handlers.backup import (
     import_backup_start,
 )
 from handlers.charts import (
+    UPLOAD_CHART_KEY,
     build_upload_chart_handler,
     cancel_upload_chart,
     chart_command,
+    upload_chart_media,
     upload_chart_start,
 )
 from handlers.common import ensure_admin
 from handlers.repertoire import (
+    ADD_KEY,
+    ADD_SOURCE,
     EDIT_FIELD,
     EDIT_FIELD_KEY,
     EDIT_SONG_ID_KEY,
     EDIT_VALUE,
     RESULT_MESSAGE_CHAR_LIMIT,
+    add_song_artist,
+    add_song_notes,
+    add_song_source,
     build_add_song_handler,
     build_edit_song_handler,
     cancel_command,
@@ -249,7 +256,7 @@ async def test_list_songs_command_sends_detailed_song_cards_when_result_fits() -
     assert "Нотатки: Slow intro." in message
     assert "Каподастр: 1" in message
     assert "Розмір: 3/4" in message
-    assert "Нотатки аранжування: Lift dynamics in verse two." in message
+    assert "Нотатки аранжування:" not in message
     assert not message.startswith("Активні пісні (")
 
 
@@ -397,6 +404,34 @@ async def test_upload_chart_start_reports_missing_song() -> None:
 
 
 @pytest.mark.asyncio
+async def test_upload_chart_media_moves_directly_to_chart_key_step() -> None:
+    update, reply = build_update()
+    telegram_file = SimpleNamespace(download_as_bytearray=AsyncMock(return_value=bytearray(b"img")))
+    update.effective_message.photo = [
+        SimpleNamespace(get_file=AsyncMock(return_value=telegram_file))
+    ]
+    context = build_context()
+    context.user_data["upload_chart_state"] = {"song_id": 5}
+
+    state = await upload_chart_media(update, context)
+
+    assert state == UPLOAD_CHART_KEY
+    assert reply.await_args.args[0] == (
+        "Тональність акордів необов'язкова. Надішліть текст або «Пропустити»."
+    )
+
+
+def test_upload_chart_handler_skips_source_url_step() -> None:
+    handler = build_upload_chart_handler()
+    callbacks = {
+        state_handler.callback.__name__
+        for handlers in handler.states.values()
+        for state_handler in handlers
+    }
+    assert "upload_chart_source_url" not in callbacks
+
+
+@pytest.mark.asyncio
 async def test_edit_song_start_shows_editable_field_previews() -> None:
     update, reply = build_update()
     song = build_song()
@@ -416,9 +451,61 @@ async def test_edit_song_start_shows_editable_field_previews() -> None:
     assert "темп: 72" in message
     assert "теги: hymn, classic" in message
     assert "нотатки: Slow intro." in message
-    assert "нотатки аранжування: Lift dynamics in verse two." in message
+    assert "нотатки аранжування:" not in message
     assert "Натисніть «Скасувати», щоб зупинити." in message
     assert reply.await_args.kwargs["reply_markup"].keyboard[0][0].text == BUTTON_CANCEL
+
+
+@pytest.mark.asyncio
+async def test_add_song_artist_prompts_for_source_with_original_link_text() -> None:
+    update, reply = build_update()
+    context = build_context()
+    context.user_data["pending_song"] = {"title": "Amazing Grace"}
+    update.effective_message.text = "Traditional"
+
+    state = await add_song_artist(update, context)
+
+    assert state == ADD_SOURCE
+    assert reply.await_args.args[0] == "Джерело? (Посилання на оригінал)"
+
+
+@pytest.mark.asyncio
+async def test_add_song_source_prompts_for_original_key() -> None:
+    update, reply = build_update()
+    context = build_context()
+    context.user_data["pending_song"] = {"title": "Amazing Grace", "artist": "Traditional"}
+    update.effective_message.text = "Пропустити"
+
+    state = await add_song_source(update, context)
+
+    assert state == ADD_KEY
+    assert reply.await_args.args[0] == "Оригінальна тональність?"
+
+
+@pytest.mark.asyncio
+async def test_add_song_notes_creates_song_without_arrangement_notes_step() -> None:
+    update, reply = build_update()
+    update.effective_message.text = "Пропустити"
+    created_song = build_song()
+    song_service = SimpleNamespace(create_song=AsyncMock(return_value=created_song))
+    context = build_context(song_service=song_service)
+    context.user_data["pending_song"] = {
+        "title": "Amazing Grace",
+        "artist": "Traditional",
+        "source_url": None,
+        "key": "G",
+        "capo": 1,
+        "time_signature": "3/4",
+        "tempo_bpm": 72,
+        "tags": ["hymn", "classic"],
+    }
+
+    state = await add_song_notes(update, context)
+
+    assert state == -1
+    payload = song_service.create_song.await_args.args[0]
+    assert payload.arrangement_notes is None
+    assert "Пісню створено:" in reply.await_args.args[0]
 
 
 @pytest.mark.asyncio
@@ -468,7 +555,7 @@ async def test_edit_song_field_rejects_unknown_field() -> None:
     assert state == EDIT_FIELD
     assert reply.await_args.args[0] == (
         "Невірне поле. Оберіть одне з: назва, виконавець, джерело, тональність, "
-        "каподастр, розмір, темп, теги, нотатки, нотатки аранжування."
+        "каподастр, розмір, темп, теги, нотатки."
     )
     assert reply.await_args.kwargs["reply_markup"].keyboard[0][0].text == BUTTON_CANCEL
 
@@ -525,7 +612,6 @@ async def test_edit_song_value_retries_on_blank_required_text() -> None:
         ("time_signature", "Розмір має бути текстом або «очистити»."),
         ("tags", "Теги мають бути значеннями через кому або «очистити»."),
         ("notes", "Нотатки мають бути текстом або «очистити»."),
-        ("arrangement_notes", "Нотатки аранжування мають бути текстом або «очистити»."),
     ],
 )
 async def test_edit_song_value_retries_on_blank_optional_field_input(
