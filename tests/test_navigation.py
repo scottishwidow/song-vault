@@ -17,7 +17,7 @@ from handlers.navigation import (
 from handlers.navigation import (
     navigation_callback_router as navigation_callback_router,
 )
-from handlers.ui import MENU_SEARCH, MENU_SONGS, MENU_START
+from handlers.ui import MENU_BACKUP, MENU_SEARCH, MENU_SONGS, MENU_START, MENU_UPLOAD_CHART
 from models.song import Song, SongStatus
 
 
@@ -145,6 +145,9 @@ async def test_menu_search_prompt_then_query_opens_browser_results() -> None:
 
     assert context.user_data[SEARCH_PENDING_KEY] is True
     prompt_reply.assert_awaited_once()
+    assert prompt_reply.await_args.args[0] == (
+        "Надішліть запит для пошуку або натисніть «Скасувати»."
+    )
     query_update, query_reply = build_message_update(text="grace")
     query_update.effective_user = prompt_update.effective_user
     query_update.effective_chat = prompt_update.effective_chat
@@ -205,6 +208,59 @@ async def test_search_cancel_returns_home_screen() -> None:
 
 
 @pytest.mark.asyncio
+async def test_menu_search_empty_results_uses_specific_copy() -> None:
+    song_service = SimpleNamespace(
+        search_songs=AsyncMock(return_value=[]),
+        list_songs=AsyncMock(return_value=[]),
+    )
+    context = build_context(song_service=song_service)
+    prompt_update, _ = build_message_update(text=MENU_SEARCH)
+    await menu_text_router(prompt_update, context)
+
+    query_update, query_reply = build_message_update(text="missing")
+    query_update.effective_user = prompt_update.effective_user
+    query_update.effective_chat = prompt_update.effective_chat
+
+    await menu_text_router(query_update, context)
+
+    query_reply.assert_awaited_once_with("За цим запитом пісень не знайдено.")
+
+
+@pytest.mark.asyncio
+async def test_menu_tags_empty_state_uses_specific_copy() -> None:
+    song_service = SimpleNamespace(list_tags=AsyncMock(return_value=[]))
+    context = build_context(song_service=song_service)
+    update, reply = build_message_update(text="Теги")
+
+    await menu_text_router(update, context)
+
+    reply.assert_awaited_once_with("Теги ще не додано.")
+
+
+@pytest.mark.asyncio
+async def test_upload_menu_rejects_non_admin_with_shared_copy() -> None:
+    song_service = SimpleNamespace(list_songs=AsyncMock())
+    context = build_context(song_service=song_service, admin_ids=(1,))
+    update, reply = build_message_update(text=MENU_UPLOAD_CHART, user_id=2)
+
+    await menu_text_router(update, context)
+
+    reply.assert_awaited_once_with("Ця дія доступна лише адміністраторам.")
+    song_service.list_songs.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_backup_menu_rejects_non_admin_with_shared_copy() -> None:
+    song_service = SimpleNamespace(list_songs=AsyncMock())
+    context = build_context(song_service=song_service, admin_ids=(1,))
+    update, reply = build_message_update(text=MENU_BACKUP, user_id=2)
+
+    await menu_text_router(update, context)
+
+    reply.assert_awaited_once_with("Ця дія доступна лише адміністраторам.")
+
+
+@pytest.mark.asyncio
 async def test_song_detail_for_non_admin_hides_admin_action_buttons() -> None:
     song = build_song()
     song_service = SimpleNamespace(get_song=AsyncMock(return_value=song))
@@ -226,7 +282,7 @@ async def test_song_detail_for_non_admin_hides_admin_action_buttons() -> None:
     assert "Редагувати" not in labels
     assert "Архівувати" not in labels
     assert "Завантажити гармонію" not in labels
-    assert "Переглянути акорди" in labels
+    assert "Переглянути гармонію" in labels
     assert "Назад до результатів" in labels
 
 
@@ -286,7 +342,7 @@ async def test_stale_upload_page_callback_recovers_state_and_renders_page() -> N
     song_service.list_songs.assert_awaited_once()
     query.edit_message_text.assert_awaited_once()
     rendered = query.edit_message_text.await_args.args[0]
-    assert "Оберіть пісню для завантаження акордів (1)" in rendered
+    assert "Оберіть пісню для завантаження гармонії (1)" in rendered
     assert context.user_data[SONG_BROWSER_STATE_KEY]["mode"] == "upload"
     keyboard = query.edit_message_text.await_args.kwargs["reply_markup"]
     assert keyboard.inline_keyboard[0][0].callback_data == "upload:start:5"
@@ -328,7 +384,7 @@ async def test_archive_confirmation_success_sends_next_actions() -> None:
     query.edit_message_reply_markup.assert_awaited_once_with(reply_markup=None)
     assert update.effective_message.reply_text.await_count == 2
     success_call = update.effective_message.reply_text.await_args_list[0]
-    assert success_call.args[0] == "Пісню #5 архівовано: Amazing Grace"
+    assert success_call.args[0] == "Пісню #5 «Amazing Grace» архівовано."
     assert success_call.kwargs["reply_markup"].keyboard[0][0].text == MENU_START
     actions_call = update.effective_message.reply_text.await_args_list[1]
     callbacks = [
@@ -337,6 +393,19 @@ async def test_archive_confirmation_success_sends_next_actions() -> None:
         for button in row
     ]
     assert callbacks == ["song:detail:5:2", "browser:page:b:2", "nav:home"]
+
+
+@pytest.mark.asyncio
+async def test_archive_confirmation_rejects_non_admin_with_shared_copy() -> None:
+    song_service = SimpleNamespace(archive_song=AsyncMock())
+    context = build_context(song_service=song_service, admin_ids=(1,))
+    update, query = build_callback_update(data="song:archiveconfirm:5:0", user_id=2)
+
+    await navigation_callback_router(update, context)
+
+    assert query.answer.await_count == 2
+    query.answer.assert_any_await("Ця дія доступна лише адміністраторам.", show_alert=True)
+    song_service.archive_song.assert_not_awaited()
 
 
 @pytest.mark.asyncio

@@ -20,6 +20,7 @@ from handlers.conversation import (
     home_or_remove_markup,
     user_state,
 )
+from handlers.messages import NEXT_ACTIONS_MESSAGE
 from handlers.ui import cancel_markup
 from services.repertoire_backup_service import BackupValidationError
 from storage.chart_storage import ChartStorageError
@@ -39,24 +40,24 @@ async def export_backup_command(update: Update, context: ContextTypes.DEFAULT_TY
         archive = await service.export_backup()
     except ChartStorageError:
         await update.effective_message.reply_text(
-            "Не вдалося експортувати резервну копію під час читання файлів акордів."
+            "Не вдалося експортувати резервну копію під час читання файлів гармонії."
         )
         return
 
     await update.effective_message.reply_document(
         document=InputFile(BytesIO(archive.content), filename=archive.filename),
         caption=(
-            "Експорт резервної копії завершено.\n"
+            "Резервну копію експортовано.\n"
             f"Пісень: {archive.song_count}\n"
-            f"Акордів: {archive.chart_count}"
+            f"Файлів гармонії: {archive.chart_count}"
         ),
     )
     await update.effective_message.reply_text(
-        "Експорт резервної копії завершено.",
+        "Резервну копію експортовано.",
         reply_markup=home_or_remove_markup(update, context),
     )
     await update.effective_message.reply_text(
-        "Що далі?",
+        NEXT_ACTIONS_MESSAGE,
         reply_markup=backup_outcome_keyboard(),
     )
 
@@ -69,7 +70,7 @@ async def import_backup_start(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     user_state(context)[IMPORT_BACKUP_STATE_KEY] = {}
     await update.effective_message.reply_text(
-        "Надішліть .zip файл резервної копії для імпорту або натисніть «Скасувати».",
+        "Надішліть .zip файл резервної копії або натисніть «Скасувати».",
         reply_markup=cancel_markup(update),
     )
     return IMPORT_BACKUP_UPLOAD
@@ -92,11 +93,11 @@ async def import_backup_file(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
     document = update.effective_message.document
     if document is None:
-        await update.effective_message.reply_text("Надішліть .zip файл документом.")
+        await update.effective_message.reply_text("Надішліть .zip файл резервної копії документом.")
         return IMPORT_BACKUP_UPLOAD
     if not _looks_like_zip(document.file_name, document.mime_type):
         await update.effective_message.reply_text(
-            "Імпорт резервної копії очікує .zip файл документом."
+            "Потрібен .zip файл резервної копії, надісланий документом."
         )
         return IMPORT_BACKUP_UPLOAD
 
@@ -107,20 +108,20 @@ async def import_backup_file(update: Update, context: ContextTypes.DEFAULT_TYPE)
     try:
         summary = await service.import_backup(content)
     except (BackupValidationError, ChartStorageError, ValueError) as error:
-        await update.effective_message.reply_text(f"Помилка імпорту резервної копії: {error}")
+        await update.effective_message.reply_text(f"Не вдалося імпортувати резервну копію: {error}")
         return ConversationHandler.END
 
     user_state(context).pop(IMPORT_BACKUP_STATE_KEY, None)
     await update.effective_message.reply_text(
         (
-            "Імпорт резервної копії завершено.\n"
+            "Резервну копію імпортовано.\n"
             f"Відновлено пісень: {summary.song_count}\n"
-            f"Відновлено акордів: {summary.chart_count}"
+            f"Відновлено файлів гармонії: {summary.chart_count}"
         ),
         reply_markup=home_or_remove_markup(update, context),
     )
     await update.effective_message.reply_text(
-        "Що далі?",
+        NEXT_ACTIONS_MESSAGE,
         reply_markup=backup_outcome_keyboard(),
     )
     return ConversationHandler.END

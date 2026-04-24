@@ -1,0 +1,5 @@
+ADMIN_REQUIRED_MESSAGE = "Ця дія доступна лише адміністраторам."
+EMPTY_ACTIVE_SONGS_MESSAGE = "У репертуарі ще немає активних пісень."
+EMPTY_SEARCH_RESULTS_MESSAGE = "За цим запитом пісень не знайдено."
+EMPTY_TAGS_MESSAGE = "Теги ще не додано."
+NEXT_ACTIONS_MESSAGE = "Що далі?"
