@@ -14,7 +14,7 @@ MENU_SEARCH = "🔎 Пошук"
 MENU_TAGS = "🏷️ Теги"
 MENU_HELP = "❓ Допомога"
 MENU_ADD_SONG = "➕ Додати пісню"
-MENU_UPLOAD_CHART = "🖼️ Завантажити акорди"
+MENU_UPLOAD_CHART = "🖼️ Завантажити гармонію"
 MENU_BACKUP = "💾 Резервна копія"
 
 BUTTON_SKIP = "Пропустити"

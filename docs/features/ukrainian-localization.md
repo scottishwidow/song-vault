@@ -14,6 +14,11 @@ All user-facing Telegram bot text was localized to Ukrainian, and English contro
 - Conversation control words were localized:
   - `Skip` -> `Пропустити`
   - `clear` -> `очистити`
+- Follow-up copy simplifications:
+  - Main admin action label changed from `Завантажити акорди` to `Завантажити гармонію`.
+  - Add-song source prompt changed to `Джерело? (Посилання на оригінал)`.
+  - Add-song flow no longer prompts for arrangement notes.
+  - Chart upload flow no longer prompts for optional source URL before chart key.
 
 ## Service-layer localization
 

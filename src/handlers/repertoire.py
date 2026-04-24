@@ -43,8 +43,7 @@ from services.song_service import (
     ADD_TEMPO,
     ADD_TAGS,
     ADD_NOTES,
-    ADD_ARRANGEMENT_NOTES,
-) = range(10)
+) = range(9)
 EDIT_FIELD, EDIT_VALUE = range(2)
 RESULT_MESSAGE_CHAR_LIMIT = 3500
 CLEAR_INPUT = "очистити"
@@ -70,7 +69,6 @@ def format_song(song: Song) -> str:
     tag_text = ", ".join(song.tags) if song.tags else "-"
     tempo_text = str(song.tempo_bpm) if song.tempo_bpm is not None else "-"
     notes_text = song.notes or "-"
-    arrangement_notes_text = song.arrangement_notes or "-"
     return (
         f"#{song.id} {song.title}\n"
         f"Виконавець: {song.artist}\n"
@@ -81,7 +79,6 @@ def format_song(song: Song) -> str:
         f"Темп: {tempo_text}\n"
         f"Теги: {tag_text}\n"
         f"Нотатки: {notes_text}\n"
-        f"Нотатки аранжування: {arrangement_notes_text}\n"
         f"Статус: {_status_label(song.status)}"
     )
 
@@ -311,14 +308,6 @@ def _parse_notes_update(raw_value: str) -> SongUpdate:
     return SongUpdate(notes=raw_value)
 
 
-def _parse_arrangement_notes_update(raw_value: str) -> SongUpdate:
-    if _is_clear(raw_value):
-        return SongUpdate(arrangement_notes=None)
-    if not raw_value:
-        raise ValueError("Нотатки аранжування мають бути текстом або «очистити».")
-    return SongUpdate(arrangement_notes=raw_value)
-
-
 def _is_clear(raw_value: str) -> bool:
     return raw_value.lower() == CLEAR_INPUT
 
@@ -345,10 +334,6 @@ def _format_tags(song: Song) -> str:
 
 def _format_notes(song: Song) -> str:
     return song.notes or "-"
-
-
-def _format_arrangement_notes(song: Song) -> str:
-    return song.arrangement_notes or "-"
 
 
 EDIT_FIELD_SPECS: dict[str, EditFieldSpec] = {
@@ -414,13 +399,6 @@ EDIT_FIELD_SPECS: dict[str, EditFieldSpec] = {
         format_current=_format_notes,
         parse_input=_parse_notes_update,
         aliases=("нотатки",),
-    ),
-    "arrangement_notes": EditFieldSpec(
-        label="нотатки аранжування",
-        prompt="Нові нотатки аранжування? Надішліть текст або «очистити».",
-        format_current=_format_arrangement_notes,
-        parse_input=_parse_arrangement_notes_update,
-        aliases=("нотатки аранжування",),
     ),
 }
 
@@ -596,7 +574,7 @@ async def add_song_artist(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     payload["artist"] = _message_text(update)
     if update.effective_message is not None:
         await update.effective_message.reply_text(
-            "Джерело? Надішліть текст або «Пропустити».",
+            "Джерело? (Посилання на оригінал)",
             reply_markup=skip_cancel_markup(update),
         )
     return ADD_SOURCE
@@ -702,18 +680,6 @@ async def add_song_notes(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     payload = _pending_song(context)
     text = _message_text(update)
     payload["notes"] = None if text.lower() == BUTTON_SKIP.lower() else text
-    if update.effective_message is not None:
-        await update.effective_message.reply_text(
-            "Нотатки аранжування? Надішліть текст або «Пропустити».",
-            reply_markup=skip_cancel_markup(update),
-        )
-    return ADD_ARRANGEMENT_NOTES
-
-
-async def add_song_arrangement_notes(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    payload = _pending_song(context)
-    text = _message_text(update)
-    arrangement_notes = None if text.lower() == BUTTON_SKIP.lower() else text
     service = get_song_service(context)
     try:
         song = await service.create_song(
@@ -727,7 +693,6 @@ async def add_song_arrangement_notes(update: Update, context: ContextTypes.DEFAU
                 tempo_bpm=cast(int | None, payload.get("tempo_bpm")),
                 tags=cast(list[str], payload.get("tags", [])),
                 notes=cast(str | None, payload.get("notes")),
-                arrangement_notes=arrangement_notes,
             )
         )
     except ValueError as error:
@@ -966,7 +931,6 @@ def build_add_song_handler() -> ConversationHandler:
             ADD_TEMPO: [_text_step(add_song_tempo)],
             ADD_TAGS: [_text_step(add_song_tags)],
             ADD_NOTES: [_text_step(add_song_notes)],
-            ADD_ARRANGEMENT_NOTES: [_text_step(add_song_arrangement_notes)],
         },
         fallbacks=_conversation_fallbacks(),
         name="add_song",

@@ -199,7 +199,7 @@ async def test_song_detail_for_non_admin_hides_admin_action_buttons() -> None:
     labels = [button.text for row in keyboard.inline_keyboard for button in row]
     assert "Редагувати" not in labels
     assert "Архівувати" not in labels
-    assert "Завантажити акорди" not in labels
+    assert "Завантажити гармонію" not in labels
     assert "Переглянути акорди" in labels
     assert "Назад до результатів" in labels
 
@@ -224,4 +224,4 @@ async def test_song_detail_for_admin_shows_admin_action_buttons() -> None:
     labels = [button.text for row in keyboard.inline_keyboard for button in row]
     assert "Редагувати" in labels
     assert "Архівувати" in labels
-    assert "Завантажити акорди" in labels
+    assert "Завантажити гармонію" in labels

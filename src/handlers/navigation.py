@@ -406,7 +406,7 @@ def _song_detail_keyboard(*, song_id: int, page: int, is_admin: bool) -> InlineK
             ]
         )
         rows.append(
-            [InlineKeyboardButton("Завантажити акорди", callback_data=f"upload:start:{song_id}")]
+            [InlineKeyboardButton("Завантажити гармонію", callback_data=f"upload:start:{song_id}")]
         )
     rows.append(
         [InlineKeyboardButton("Назад до результатів", callback_data=f"browser:page:b:{page}")]
