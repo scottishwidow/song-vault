@@ -102,3 +102,17 @@ contracts:
 - Chart upload/view text now uses "гармонія" consistently to match the reply-keyboard menu label.
 - Archive, backup export, and backup import outcomes use consistent success text and keep the
   Stage 3 next-action buttons.
+
+## Implementation note: docs and final verification
+
+Stage 5 finalizes documentation and verification for this UX cleanup:
+
+- README/MVP docs now explicitly describe the current userspace surface as button-first with
+  `/start` as the only typed entry/reset command.
+- `arrangement_notes` is now explicitly documented as persisted for domain/backup compatibility but
+  currently non-user-facing in bot flows.
+- Final quality gates were run after Stage 5 updates:
+  - `uv run ruff check .`
+  - `uv run ruff format --check .`
+  - `uv run mypy`
+  - `uv run pytest`

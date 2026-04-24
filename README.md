@@ -9,7 +9,8 @@ The MVP is complete. The current repository baseline is the finished admin-opera
 - Async Telegram bot skeleton with polling
 - Button-first Telegram navigation (reply keyboard + inline actions)
 - Admin-only repertoire CRUD flow
-- Rich song metadata fields: capo, time signature, and arrangement notes
+- Rich song metadata fields: capo and time signature
+- Stored `arrangement_notes` field for backup/domain compatibility (currently non-user-facing)
 - Admin-only chart upload flow with one active chart per song
 - Chart retrieval by song ID
 - Admin-only repertoire backup export/import (ZIP with chart binaries)

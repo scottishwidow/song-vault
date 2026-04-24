@@ -4,17 +4,18 @@ The MVP is finished. This document records the delivered scope of the first usab
 
 ## Included
 
-- Start and help commands
+- Button-first navigation with `/start` as the only typed entry/reset command
 - List active songs
 - Search songs by title, artist, and tag text
 - Guided add-song flow
 - Guided edit-song flow
-- Soft-archive command
+- Soft-archive flow
 - Tag listing
-- Rich song metadata fields (capo, time signature, arrangement notes)
+- Rich song metadata fields (capo, time signature)
+- Stored `arrangement_notes` field for backups/domain compatibility (currently non-user-facing)
 - One current chart image per song, managed by admins
-- Admin-only chart upload command
-- Song chart retrieval command for all users
+- Admin-only chart upload flow
+- Song chart retrieval flow for all users
 - S3-compatible chart storage for local/dev via MinIO
 - Admin-only repertoire backup export/import (ZIP with songs + charts)
 
@@ -28,7 +29,7 @@ Charts shipped in the MVP as admin-managed image attachments.
 - Chart binaries live in S3-compatible object storage, with MinIO used in Docker Compose for local development.
 - Chart metadata is stored separately from the song record so future arrangement support remains possible.
 - Chart metadata includes optional `source_url` and optional chart key in the musical sense.
-- Chart upload happens in a dedicated step after song creation rather than inside `/addsong`.
+- Chart upload happens in a dedicated step after song creation.
 - Chart retrieval is available to all bot users in the delivered MVP.
 
 ## Out of scope
@@ -46,12 +47,12 @@ Charts shipped in the MVP as admin-managed image attachments.
 
 - [x] Establish project baseline with `uv`, CI, linting, formatting, and pre-commit
 - [x] Define the initial song data model and migration flow
-- [x] Implement admin-only repertoire CRUD command flows
+- [x] Implement admin-only repertoire CRUD flows
 - [x] Add Postgres-backed integration tests for migrations and persistence
 - [x] Improve guided edit flows with field previews and validation feedback
-- [x] Add pagination or compact summaries for long `/songs` and `/search` results
-- [x] Add chart attachment storage, metadata persistence, and admin commands
-- [x] Support richer song metadata such as capo, time signature, and arrangement notes
+- [x] Add pagination or compact summaries for long list/search result sets
+- [x] Add chart attachment storage, metadata persistence, and admin upload/view flows
+- [x] Support richer song metadata such as capo, time signature, and persisted arrangement notes
 - [x] Add import/export support for repertoire backups
 
 ## Next planning location
