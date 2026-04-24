@@ -72,3 +72,19 @@ backup import, and navigation handlers use it for typed `context.user_data` acce
 callback payload parsing, cancel-message filters/fallbacks, home-screen reply markup fallback, and
 state-lost replies. This keeps the handler behavior and callback payloads unchanged while removing
 duplicated private helper code.
+
+## Implementation note: navigation recovery and return actions
+
+Stage 3 hardens callback-driven navigation without changing service contracts or persistence:
+
+- `song_browser_state` now tracks `current_page` in addition to mode/title/items.
+- Stale browser callbacks (`browser:page:b:*` and `browser:page:u:*`) rebuild list state from
+  `SongService.list_songs()` when state is missing or mode drifted.
+- Added deterministic home callback `nav:home` for inline-button return to the home screen.
+- Added shared inline next-action keyboards for:
+  - song outcomes: details, list, home
+  - backup outcomes: backup menu, home
+- Archive/edit/upload/export/import success paths now use a two-message pattern:
+  first message keeps reply-keyboard reset behavior, second message offers inline return actions.
+- Upload flow now keeps return context (`return_mode`, `return_page`) in upload state so post-upload
+  navigation can reopen the upload target list page.

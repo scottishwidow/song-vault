@@ -20,6 +20,7 @@ from handlers.conversation import (
     parse_callback_int,
     parse_song_id_arg,
     reply_state_lost,
+    song_outcome_keyboard,
     user_state,
 )
 from handlers.ui import BUTTON_SKIP, cancel_markup
@@ -115,7 +116,11 @@ async def _begin_upload_for_song_id(
         await update.effective_message.reply_text(str(error))
         return ConversationHandler.END
 
-    user_state(context)[UPLOAD_CHART_STATE_KEY] = {"song_id": song_id}
+    user_state(context)[UPLOAD_CHART_STATE_KEY] = {
+        "song_id": song_id,
+        "return_mode": "upload",
+        "return_page": _browser_return_page(context),
+    }
     await update.effective_message.reply_text(
         f"Ціль завантаження: пісня #{song_id}.\nНадішліть зображення акордів як фото або файл.",
         reply_markup=cancel_markup(update),
@@ -175,6 +180,8 @@ async def upload_chart_chart_key(update: Update, context: ContextTypes.DEFAULT_T
     chart_service = get_chart_service(context)
     state = _upload_state(context)
     song_id = state.get("song_id")
+    return_mode = state.get("return_mode")
+    return_page = state.get("return_page")
     content = state.get("content")
     content_type = state.get("content_type")
     filename = state.get("filename")
@@ -190,6 +197,10 @@ async def upload_chart_chart_key(update: Update, context: ContextTypes.DEFAULT_T
             "Стан завантаження втрачено. Почніть знову через «Завантажити гармонію».",
         )
         return ConversationHandler.END
+
+    list_mode_short = "u" if return_mode == "upload" else "b"
+    if not isinstance(return_page, int) or return_page < 0:
+        return_page = 0
 
     raw_key = (update.effective_message.text or "").strip()
     chart_key = None if raw_key.lower() == BUTTON_SKIP.lower() else raw_key
@@ -212,6 +223,14 @@ async def upload_chart_chart_key(update: Update, context: ContextTypes.DEFAULT_T
     await update.effective_message.reply_text(
         f"Акорди #{chart.id} для пісні #{song_id} завантажено.",
         reply_markup=home_or_remove_markup(update, context),
+    )
+    await update.effective_message.reply_text(
+        "Що далі?",
+        reply_markup=song_outcome_keyboard(
+            song_id=song_id,
+            page=return_page,
+            list_mode_short=list_mode_short,
+        ),
     )
     return ConversationHandler.END
 
@@ -254,6 +273,16 @@ def _upload_state(context: ContextTypes.DEFAULT_TYPE) -> dict[str, object]:
     fresh_state: dict[str, object] = {}
     user_state(context)[UPLOAD_CHART_STATE_KEY] = fresh_state
     return fresh_state
+
+
+def _browser_return_page(context: ContextTypes.DEFAULT_TYPE) -> int:
+    browser_state = user_state(context).get("song_browser_state")
+    if not isinstance(browser_state, dict):
+        return 0
+    raw_page = browser_state.get("current_page")
+    if isinstance(raw_page, int) and raw_page >= 0:
+        return raw_page
+    return 0
 
 
 def _chart_caption(chart_file: ChartFile) -> str:

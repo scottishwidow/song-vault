@@ -20,6 +20,7 @@ from handlers.charts import (
     build_upload_chart_handler,
     cancel_upload_chart,
     chart_command,
+    upload_chart_chart_key,
     upload_chart_media,
     upload_chart_start,
 )
@@ -458,6 +459,36 @@ def test_upload_chart_handler_skips_source_url_step() -> None:
 
 
 @pytest.mark.asyncio
+async def test_upload_chart_chart_key_sends_success_and_next_actions() -> None:
+    update, reply = build_update()
+    update.effective_message.text = "G"
+    chart_service = SimpleNamespace(upload_chart=AsyncMock(return_value=SimpleNamespace(id=12)))
+    context = build_context(chart_service=chart_service)
+    context.user_data["upload_chart_state"] = {
+        "song_id": 5,
+        "content": b"img",
+        "content_type": "image/png",
+        "filename": "song-5-chart.png",
+        "return_mode": "upload",
+        "return_page": 3,
+    }
+
+    state = await upload_chart_chart_key(update, context)
+
+    assert state == -1
+    assert "upload_chart_state" not in context.user_data
+    assert reply.await_count == 2
+    assert reply.await_args_list[0].args[0] == "Акорди #12 для пісні #5 завантажено."
+    assert reply.await_args_list[0].kwargs["reply_markup"].keyboard[0][0].text == MENU_START
+    callbacks = [
+        button.callback_data
+        for row in reply.await_args_list[1].kwargs["reply_markup"].inline_keyboard
+        for button in row
+    ]
+    assert callbacks == ["song:detail:5:3", "browser:page:u:3", "nav:home"]
+
+
+@pytest.mark.asyncio
 async def test_edit_song_start_shows_editable_field_previews() -> None:
     update, reply = build_update()
     song = build_song()
@@ -714,6 +745,12 @@ async def test_edit_song_value_updates_song_and_clears_state() -> None:
     context = build_context(song_service=song_service)
     context.user_data[EDIT_SONG_ID_KEY] = updated_song.id
     context.user_data[EDIT_FIELD_KEY] = "title"
+    context.user_data["song_browser_state"] = {
+        "mode": "browse",
+        "title": "Активні пісні",
+        "items": [{"id": 5, "title": "Amazing Grace", "artist": "Traditional"}],
+        "current_page": 2,
+    }
     update.effective_message.text = "Amazing Grace (Acoustic)"
 
     state = await edit_song_value(update, context)
@@ -723,7 +760,15 @@ async def test_edit_song_value_updates_song_and_clears_state() -> None:
     assert EDIT_FIELD_KEY not in context.user_data
     update_payload = song_service.update_song.await_args.args[1]
     assert update_payload.values() == {"title": "Amazing Grace (Acoustic)"}
-    assert "Пісню оновлено:" in reply.await_args.args[0]
+    assert reply.await_count == 2
+    assert "Пісню оновлено:" in reply.await_args_list[0].args[0]
+    assert reply.await_args_list[0].kwargs["reply_markup"].keyboard[0][0].text == MENU_START
+    callbacks = [
+        button.callback_data
+        for row in reply.await_args_list[1].kwargs["reply_markup"].inline_keyboard
+        for button in row
+    ]
+    assert callbacks == ["song:detail:5:2", "browser:page:b:2", "nav:home"]
 
 
 @pytest.mark.asyncio
@@ -740,7 +785,7 @@ async def test_export_backup_command_requires_admin() -> None:
 
 @pytest.mark.asyncio
 async def test_export_backup_command_sends_archive_document() -> None:
-    update, _ = build_update()
+    update, reply = build_update()
     backup_service = SimpleNamespace(
         export_backup=AsyncMock(
             return_value=BackupArchive(
@@ -762,6 +807,15 @@ async def test_export_backup_command_sends_archive_document() -> None:
     assert sent_file.input_file_content == b"zip-data"
     assert "Пісень: 2" in args["caption"]
     assert "Акордів: 1" in args["caption"]
+    assert reply.await_count == 2
+    assert reply.await_args_list[0].args[0] == "Експорт резервної копії завершено."
+    assert reply.await_args_list[0].kwargs["reply_markup"].keyboard[0][0].text == MENU_START
+    callbacks = [
+        button.callback_data
+        for row in reply.await_args_list[1].kwargs["reply_markup"].inline_keyboard
+        for button in row
+    ]
+    assert callbacks == ["backup:menu", "nav:home"]
 
 
 @pytest.mark.asyncio
@@ -811,9 +865,17 @@ async def test_import_backup_file_runs_restore_and_reports_success() -> None:
 
     assert state == -1
     backup_service.import_backup.assert_awaited_once_with(b"zip")
-    message = reply.await_args.args[0]
+    assert reply.await_count == 2
+    message = reply.await_args_list[0].args[0]
     assert "Відновлено пісень: 3" in message
     assert "Відновлено акордів: 2" in message
+    assert reply.await_args_list[0].kwargs["reply_markup"].keyboard[0][0].text == MENU_START
+    callbacks = [
+        button.callback_data
+        for row in reply.await_args_list[1].kwargs["reply_markup"].inline_keyboard
+        for button in row
+    ]
+    assert callbacks == ["backup:menu", "nav:home"]
 
 
 @pytest.mark.asyncio

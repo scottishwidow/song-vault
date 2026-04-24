@@ -79,6 +79,7 @@ def build_callback_update(
     query = SimpleNamespace(
         data=data,
         answer=AsyncMock(),
+        edit_message_reply_markup=AsyncMock(),
         edit_message_text=AsyncMock(),
         message=SimpleNamespace(reply_text=reply),
     )
@@ -142,6 +143,7 @@ async def test_start_button_returns_home_screen_and_clears_navigation_state() ->
         "mode": "browse",
         "title": "Активні пісні",
         "items": [],
+        "current_page": 0,
     }
     update, reply = build_message_update(text=MENU_START)
 
@@ -188,6 +190,7 @@ async def test_song_detail_for_non_admin_hides_admin_action_buttons() -> None:
         "mode": "browse",
         "title": "Активні пісні",
         "items": [{"id": 5, "title": "Amazing Grace", "artist": "Traditional"}],
+        "current_page": 0,
     }
     update, query = build_callback_update(data="song:detail:5:0", user_id=2)
 
@@ -213,6 +216,7 @@ async def test_song_detail_for_admin_shows_admin_action_buttons() -> None:
         "mode": "browse",
         "title": "Активні пісні",
         "items": [{"id": 5, "title": "Amazing Grace", "artist": "Traditional"}],
+        "current_page": 0,
     }
     update, query = build_callback_update(data="song:detail:5:0", user_id=1)
 
@@ -225,3 +229,96 @@ async def test_song_detail_for_admin_shows_admin_action_buttons() -> None:
     assert "Редагувати" in labels
     assert "Архівувати" in labels
     assert "Завантажити гармонію" in labels
+
+
+@pytest.mark.asyncio
+async def test_stale_browse_page_callback_recovers_state_and_renders_page() -> None:
+    song = build_song()
+    song_service = SimpleNamespace(list_songs=AsyncMock(return_value=[song]))
+    context = build_context(song_service=song_service)
+    update, query = build_callback_update(data="browser:page:b:0", user_id=1)
+
+    await navigation_callback_router(update, context)
+
+    query.answer.assert_awaited_once()
+    song_service.list_songs.assert_awaited_once()
+    query.edit_message_text.assert_awaited_once()
+    rendered = query.edit_message_text.await_args.args[0]
+    assert "Активні пісні (1)" in rendered
+    assert context.user_data[SONG_BROWSER_STATE_KEY]["mode"] == "browse"
+    keyboard = query.edit_message_text.await_args.kwargs["reply_markup"]
+    assert keyboard.inline_keyboard[0][0].callback_data == "song:detail:5:0"
+
+
+@pytest.mark.asyncio
+async def test_stale_upload_page_callback_recovers_state_and_renders_page() -> None:
+    song = build_song()
+    song_service = SimpleNamespace(list_songs=AsyncMock(return_value=[song]))
+    context = build_context(song_service=song_service)
+    update, query = build_callback_update(data="browser:page:u:0", user_id=1)
+
+    await navigation_callback_router(update, context)
+
+    query.answer.assert_awaited_once()
+    song_service.list_songs.assert_awaited_once()
+    query.edit_message_text.assert_awaited_once()
+    rendered = query.edit_message_text.await_args.args[0]
+    assert "Оберіть пісню для завантаження акордів (1)" in rendered
+    assert context.user_data[SONG_BROWSER_STATE_KEY]["mode"] == "upload"
+    keyboard = query.edit_message_text.await_args.kwargs["reply_markup"]
+    assert keyboard.inline_keyboard[0][0].callback_data == "upload:start:5"
+
+
+@pytest.mark.asyncio
+async def test_archive_confirmation_success_sends_next_actions() -> None:
+    archived_song = build_song()
+    song_service = SimpleNamespace(archive_song=AsyncMock(return_value=archived_song))
+    context = build_context(song_service=song_service, admin_ids=(1,))
+    context.user_data[SONG_BROWSER_STATE_KEY] = {
+        "mode": "browse",
+        "title": "Активні пісні",
+        "items": [{"id": 5, "title": "Amazing Grace", "artist": "Traditional"}],
+        "current_page": 2,
+    }
+    update, query = build_callback_update(data="song:archiveconfirm:5:2", user_id=1)
+
+    await navigation_callback_router(update, context)
+
+    query.answer.assert_awaited_once()
+    song_service.archive_song.assert_awaited_once_with(5)
+    query.edit_message_reply_markup.assert_awaited_once_with(reply_markup=None)
+    assert update.effective_message.reply_text.await_count == 2
+    success_call = update.effective_message.reply_text.await_args_list[0]
+    assert success_call.args[0] == "Пісню #5 архівовано: Amazing Grace"
+    assert success_call.kwargs["reply_markup"].keyboard[0][0].text == MENU_START
+    actions_call = update.effective_message.reply_text.await_args_list[1]
+    callbacks = [
+        button.callback_data
+        for row in actions_call.kwargs["reply_markup"].inline_keyboard
+        for button in row
+    ]
+    assert callbacks == ["song:detail:5:2", "browser:page:b:2", "nav:home"]
+
+
+@pytest.mark.asyncio
+async def test_nav_home_callback_returns_home_screen() -> None:
+    song_service = SimpleNamespace(list_songs=AsyncMock(return_value=[]))
+    context = build_context(song_service=song_service)
+    context.user_data[SEARCH_PENDING_KEY] = True
+    context.user_data[SONG_BROWSER_STATE_KEY] = {
+        "mode": "browse",
+        "title": "Активні пісні",
+        "items": [],
+        "current_page": 0,
+    }
+    update, query = build_callback_update(data="nav:home", user_id=1)
+
+    await navigation_callback_router(update, context)
+
+    query.answer.assert_awaited_once()
+    assert SEARCH_PENDING_KEY not in context.user_data
+    assert SONG_BROWSER_STATE_KEY not in context.user_data
+    update.effective_message.reply_text.assert_awaited_once()
+    assert update.effective_message.reply_text.await_args.args[0] == (
+        "Бот готовий.\nКористуйтеся кнопками меню нижче."
+    )

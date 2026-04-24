@@ -14,6 +14,7 @@ from telegram.ext import (
 from bot.runtime import get_backup_service
 from handlers.common import ensure_admin, send_home_screen
 from handlers.conversation import (
+    backup_outcome_keyboard,
     cancel_message_fallback,
     conversation_message_filter,
     home_or_remove_markup,
@@ -49,6 +50,14 @@ async def export_backup_command(update: Update, context: ContextTypes.DEFAULT_TY
             f"Пісень: {archive.song_count}\n"
             f"Акордів: {archive.chart_count}"
         ),
+    )
+    await update.effective_message.reply_text(
+        "Експорт резервної копії завершено.",
+        reply_markup=home_or_remove_markup(update, context),
+    )
+    await update.effective_message.reply_text(
+        "Що далі?",
+        reply_markup=backup_outcome_keyboard(),
     )
 
 
@@ -109,6 +118,10 @@ async def import_backup_file(update: Update, context: ContextTypes.DEFAULT_TYPE)
             f"Відновлено акордів: {summary.chart_count}"
         ),
         reply_markup=home_or_remove_markup(update, context),
+    )
+    await update.effective_message.reply_text(
+        "Що далі?",
+        reply_markup=backup_outcome_keyboard(),
     )
     return ConversationHandler.END
 

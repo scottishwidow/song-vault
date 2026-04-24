@@ -24,6 +24,7 @@ from handlers.conversation import (
     parse_callback_int,
     parse_song_id_arg,
     reply_state_lost,
+    song_outcome_keyboard,
     user_state,
 )
 from handlers.ui import (
@@ -877,11 +878,30 @@ async def edit_song_value(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
     state.pop(EDIT_SONG_ID_KEY, None)
     state.pop(EDIT_FIELD_KEY, None)
+    return_page = _browser_return_page(context)
     await update.effective_message.reply_text(
         "Пісню оновлено:\n" + format_song(song),
         reply_markup=home_or_remove_markup(update, context),
     )
+    await update.effective_message.reply_text(
+        "Що далі?",
+        reply_markup=song_outcome_keyboard(
+            song_id=int(song.id),
+            page=return_page,
+            list_mode_short="b",
+        ),
+    )
     return ConversationHandler.END
+
+
+def _browser_return_page(context: ContextTypes.DEFAULT_TYPE) -> int:
+    browser_state = user_state(context).get("song_browser_state")
+    if not isinstance(browser_state, dict):
+        return 0
+    raw_page = browser_state.get("current_page")
+    if isinstance(raw_page, int) and raw_page >= 0:
+        return raw_page
+    return 0
 
 
 def _pending_song(context: ContextTypes.DEFAULT_TYPE) -> dict[str, object]:
