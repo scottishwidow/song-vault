@@ -9,6 +9,7 @@ from bot.runtime import get_song_service
 from handlers.backup import export_backup_command
 from handlers.charts import send_chart_for_song_id
 from handlers.common import help_command, send_home_screen
+from handlers.conversation import parse_callback_int, parse_callback_int_pair, user_state
 from handlers.repertoire import format_song, tags_command
 from handlers.ui import (
     BUTTON_CANCEL,
@@ -49,7 +50,7 @@ async def menu_text_router(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     if message is None or message.text is None:
         return
     text = message.text.strip()
-    state = _user_state(context)
+    state = user_state(context)
 
     if text == MENU_START:
         _reset_navigation_state(context)
@@ -131,7 +132,7 @@ async def navigation_callback_router(update: Update, context: ContextTypes.DEFAU
 
     if data.startswith("song:detail:"):
         await query.answer()
-        detail_payload = _parse_song_action(data, prefix="song:detail:")
+        detail_payload = parse_callback_int_pair(data, prefix="song:detail:")
         if detail_payload is None:
             await query.edit_message_text("Не вдалося завантажити деталі пісні.")
             return
@@ -141,7 +142,7 @@ async def navigation_callback_router(update: Update, context: ContextTypes.DEFAU
 
     if data.startswith("song:view:"):
         await query.answer()
-        view_song_id = _parse_single_song_id(data, prefix="song:view:")
+        view_song_id = parse_callback_int(data, prefix="song:view:")
         if view_song_id is None:
             if update.effective_message is not None:
                 await update.effective_message.reply_text(
@@ -153,7 +154,7 @@ async def navigation_callback_router(update: Update, context: ContextTypes.DEFAU
 
     if data.startswith("song:archiveconfirm:"):
         await query.answer()
-        confirm_payload = _parse_song_action(data, prefix="song:archiveconfirm:")
+        confirm_payload = parse_callback_int_pair(data, prefix="song:archiveconfirm:")
         if confirm_payload is None:
             await query.edit_message_text("Не вдалося розпізнати запит на архівацію.")
             return
@@ -163,7 +164,7 @@ async def navigation_callback_router(update: Update, context: ContextTypes.DEFAU
 
     if data.startswith("song:archive:"):
         await query.answer()
-        archive_payload = _parse_song_action(data, prefix="song:archive:")
+        archive_payload = parse_callback_int_pair(data, prefix="song:archive:")
         if archive_payload is None:
             await query.edit_message_text("Не вдалося розпізнати запит на архівацію.")
             return
@@ -225,7 +226,7 @@ async def show_song_browser(
         "title": title,
         "items": _browser_items(songs),
     }
-    _user_state(context)[SONG_BROWSER_STATE_KEY] = state
+    user_state(context)[SONG_BROWSER_STATE_KEY] = state
     await _render_browser_page(update, context, mode="browse", page=0, edit=False)
 
 
@@ -243,7 +244,7 @@ async def show_upload_target_picker(update: Update, context: ContextTypes.DEFAUL
         "title": "Оберіть пісню для завантаження акордів",
         "items": _browser_items(songs),
     }
-    _user_state(context)[SONG_BROWSER_STATE_KEY] = state
+    user_state(context)[SONG_BROWSER_STATE_KEY] = state
     await _render_browser_page(update, context, mode="upload", page=0, edit=False)
 
 
@@ -497,7 +498,7 @@ def _browser_items(songs: list[Song]) -> list[BrowserItem]:
 
 
 def _active_browser_state(context: ContextTypes.DEFAULT_TYPE) -> BrowserState | None:
-    value = _user_state(context).get(SONG_BROWSER_STATE_KEY)
+    value = user_state(context).get(SONG_BROWSER_STATE_KEY)
     if isinstance(value, dict):
         state = cast(BrowserState, value)
         if "mode" in state and "title" in state and "items" in state:
@@ -528,38 +529,10 @@ def _parse_browser_page(data: str) -> tuple[str, int] | None:
     return mode, page
 
 
-def _parse_song_action(data: str, *, prefix: str) -> tuple[int, int] | None:
-    if not data.startswith(prefix):
-        return None
-    parts = data[len(prefix) :].split(":")
-    if len(parts) != 2:
-        return None
-    try:
-        song_id = int(parts[0])
-        page = int(parts[1])
-    except ValueError:
-        return None
-    return song_id, page
-
-
-def _parse_single_song_id(data: str, *, prefix: str) -> int | None:
-    if not data.startswith(prefix):
-        return None
-    raw_song_id = data[len(prefix) :]
-    try:
-        return int(raw_song_id)
-    except ValueError:
-        return None
-
-
 def _clear_search_pending(context: ContextTypes.DEFAULT_TYPE) -> None:
-    _user_state(context).pop(SEARCH_PENDING_KEY, None)
+    user_state(context).pop(SEARCH_PENDING_KEY, None)
 
 
 def _reset_navigation_state(context: ContextTypes.DEFAULT_TYPE) -> None:
     _clear_search_pending(context)
-    _user_state(context).pop(SONG_BROWSER_STATE_KEY, None)
-
-
-def _user_state(context: ContextTypes.DEFAULT_TYPE) -> dict[str, object]:
-    return cast(dict[str, object], context.user_data)
+    user_state(context).pop(SONG_BROWSER_STATE_KEY, None)

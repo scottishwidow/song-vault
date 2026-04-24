@@ -1,9 +1,8 @@
 from __future__ import annotations
 
 from io import BytesIO
-from typing import cast
 
-from telegram import InputFile, ReplyKeyboardRemove, Update
+from telegram import InputFile, Update
 from telegram.ext import (
     CallbackQueryHandler,
     ContextTypes,
@@ -14,7 +13,16 @@ from telegram.ext import (
 
 from bot.runtime import get_chart_service
 from handlers.common import ensure_admin, send_home_screen
-from handlers.ui import BUTTON_SKIP, CANCEL_BUTTON_PATTERN, cancel_markup, home_menu_markup
+from handlers.conversation import (
+    cancel_message_fallback,
+    conversation_message_filter,
+    home_or_remove_markup,
+    parse_callback_int,
+    parse_song_id_arg,
+    reply_state_lost,
+    user_state,
+)
+from handlers.ui import BUTTON_SKIP, cancel_markup
 from services.chart_service import ChartFile, ChartUpload, SongChartNotFoundError
 from services.song_service import SongNotFoundError
 from storage.chart_storage import ChartStorageError
@@ -27,7 +35,7 @@ async def chart_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     if update.effective_message is None:
         return
 
-    song_id = _parse_song_id(context.args or [])
+    song_id = parse_song_id_arg(context.args or [])
     if song_id is None:
         await update.effective_message.reply_text("Використання: /chart <id_пісні>")
         return
@@ -69,7 +77,7 @@ async def upload_chart_start(update: Update, context: ContextTypes.DEFAULT_TYPE)
     if update.effective_message is None:
         return ConversationHandler.END
 
-    song_id = _parse_song_id(context.args or [])
+    song_id = parse_song_id_arg(context.args or [])
     if song_id is None:
         await update.effective_message.reply_text("Використання: /uploadchart <id_пісні>")
         return ConversationHandler.END
@@ -84,7 +92,7 @@ async def upload_chart_start_from_callback(
     if query is None:
         return ConversationHandler.END
     await query.answer()
-    song_id = _song_id_from_callback(query.data, prefix="upload:start:")
+    song_id = parse_callback_int(query.data, prefix="upload:start:")
     if song_id is None:
         if update.effective_message is not None:
             await update.effective_message.reply_text("Не вдалося розпізнати вибір пісні.")
@@ -107,7 +115,7 @@ async def _begin_upload_for_song_id(
         await update.effective_message.reply_text(str(error))
         return ConversationHandler.END
 
-    _user_state(context)[UPLOAD_CHART_STATE_KEY] = {"song_id": song_id}
+    user_state(context)[UPLOAD_CHART_STATE_KEY] = {"song_id": song_id}
     await update.effective_message.reply_text(
         f"Ціль завантаження: пісня #{song_id}.\nНадішліть зображення акордів як фото або файл.",
         reply_markup=cancel_markup(update),
@@ -122,9 +130,10 @@ async def upload_chart_media(update: Update, context: ContextTypes.DEFAULT_TYPE)
     state = _upload_state(context)
     song_id = state.get("song_id")
     if not isinstance(song_id, int):
-        await update.effective_message.reply_text(
+        await reply_state_lost(
+            update,
+            context,
             "Стан завантаження втрачено. Почніть знову через «Завантажити гармонію».",
-            reply_markup=home_menu_markup(update, context) or ReplyKeyboardRemove(),
         )
         return ConversationHandler.END
 
@@ -175,9 +184,10 @@ async def upload_chart_chart_key(update: Update, context: ContextTypes.DEFAULT_T
         or not isinstance(content_type, str)
         or not isinstance(filename, str)
     ):
-        await update.effective_message.reply_text(
+        await reply_state_lost(
+            update,
+            context,
             "Стан завантаження втрачено. Почніть знову через «Завантажити гармонію».",
-            reply_markup=home_menu_markup(update, context) or ReplyKeyboardRemove(),
         )
         return ConversationHandler.END
 
@@ -198,16 +208,16 @@ async def upload_chart_chart_key(update: Update, context: ContextTypes.DEFAULT_T
         await update.effective_message.reply_text(str(error))
         return ConversationHandler.END
 
-    _user_state(context).pop(UPLOAD_CHART_STATE_KEY, None)
+    user_state(context).pop(UPLOAD_CHART_STATE_KEY, None)
     await update.effective_message.reply_text(
         f"Акорди #{chart.id} для пісні #{song_id} завантажено.",
-        reply_markup=home_menu_markup(update, context) or ReplyKeyboardRemove(),
+        reply_markup=home_or_remove_markup(update, context),
     )
     return ConversationHandler.END
 
 
 async def cancel_upload_chart(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    _user_state(context).pop(UPLOAD_CHART_STATE_KEY, None)
+    user_state(context).pop(UPLOAD_CHART_STATE_KEY, None)
     await send_home_screen(update, context, prefix="Скасовано.")
     return ConversationHandler.END
 
@@ -220,63 +230,29 @@ def build_upload_chart_handler() -> ConversationHandler:
         states={
             UPLOAD_MEDIA: [
                 MessageHandler(
-                    filters.ALL
-                    & ~filters.COMMAND
-                    & ~filters.Regex(CANCEL_BUTTON_PATTERN)
-                    & filters.UpdateType.MESSAGE,
+                    conversation_message_filter(filters.ALL),
                     upload_chart_media,
                 )
             ],
             UPLOAD_CHART_KEY: [
                 MessageHandler(
-                    filters.TEXT
-                    & ~filters.COMMAND
-                    & ~filters.Regex(CANCEL_BUTTON_PATTERN)
-                    & filters.UpdateType.MESSAGE,
+                    conversation_message_filter(),
                     upload_chart_chart_key,
                 )
             ],
         },
-        fallbacks=[
-            MessageHandler(
-                filters.Regex(CANCEL_BUTTON_PATTERN)
-                & ~filters.COMMAND
-                & filters.UpdateType.MESSAGE,
-                cancel_upload_chart,
-            ),
-        ],
+        fallbacks=[cancel_message_fallback(cancel_upload_chart)],
         name="upload_chart",
         persistent=False,
     )
 
 
-def _parse_song_id(args: list[str]) -> int | None:
-    if len(args) != 1:
-        return None
-    try:
-        return int(args[0])
-    except ValueError:
-        return None
-
-
-def _song_id_from_callback(data: str | None, *, prefix: str) -> int | None:
-    if not isinstance(data, str):
-        return None
-    if not data.startswith(prefix):
-        return None
-    raw_value = data[len(prefix) :]
-    try:
-        return int(raw_value)
-    except ValueError:
-        return None
-
-
 def _upload_state(context: ContextTypes.DEFAULT_TYPE) -> dict[str, object]:
-    state = _user_state(context).get(UPLOAD_CHART_STATE_KEY)
+    state = user_state(context).get(UPLOAD_CHART_STATE_KEY)
     if isinstance(state, dict):
         return state
     fresh_state: dict[str, object] = {}
-    _user_state(context)[UPLOAD_CHART_STATE_KEY] = fresh_state
+    user_state(context)[UPLOAD_CHART_STATE_KEY] = fresh_state
     return fresh_state
 
 
@@ -289,7 +265,3 @@ def _chart_caption(chart_file: ChartFile) -> str:
     if chart_file.source_url:
         lines.append(f"Джерело акордів: {chart_file.source_url}")
     return "\n".join(lines)
-
-
-def _user_state(context: ContextTypes.DEFAULT_TYPE) -> dict[str, object]:
-    return cast(dict[str, object], context.user_data)

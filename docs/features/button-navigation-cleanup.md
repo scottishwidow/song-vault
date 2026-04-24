@@ -64,3 +64,11 @@ Coverage added or updated for:
 
 - `Cancel` and `Skip` remain plain-text buttons.
 - Existing command-oriented helper functions still exist where they support internal callback-driven flows, but userspace is now button-first with `/start` as the only typed reset path.
+
+## Implementation note: handler conversation helpers
+
+Shared conversation plumbing now lives in `handlers.conversation`. Repertoire, chart upload,
+backup import, and navigation handlers use it for typed `context.user_data` access, song ID and
+callback payload parsing, cancel-message filters/fallbacks, home-screen reply markup fallback, and
+state-lost replies. This keeps the handler behavior and callback payloads unchanged while removing
+duplicated private helper code.
