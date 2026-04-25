@@ -1,7 +1,7 @@
 import logging
 
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
-from telegram import Update
+from telegram import BotCommand, MenuButtonCommands, Update
 from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
 
 from bot.runtime import (
@@ -29,7 +29,8 @@ async def post_init(application: Application) -> None:
     chart_service = application.bot_data.get(CHART_SERVICE_KEY)
     if isinstance(chart_service, ChartService):
         await chart_service.ensure_storage_ready()
-    await application.bot.delete_my_commands()
+    await application.bot.set_my_commands([BotCommand("start", "Відкрити головне меню")])
+    await application.bot.set_chat_menu_button(menu_button=MenuButtonCommands())
 
 
 async def post_shutdown(application: Application) -> None:

@@ -87,7 +87,7 @@ def format_song(song: Song) -> str:
     return (
         f"#{song.id} {song.title}\n"
         f"Виконавець: {song.artist}\n"
-        f"Джерело: {source_text}\n"
+        f"Джерело (оригінал): {source_text}\n"
         f"Тональність: {song.key}\n"
         f"Каподастр: {capo_text}\n"
         f"Розмір: {time_signature_text}\n"
