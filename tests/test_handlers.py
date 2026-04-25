@@ -47,7 +47,7 @@ from handlers.repertoire import (
     list_songs_command,
     search_songs_command,
 )
-from handlers.ui import BUTTON_CANCEL, MENU_START
+from handlers.ui import BUTTON_CANCEL, BUTTON_SKIP, MENU_START
 from models.song import Song, SongStatus
 from services.chart_service import SongChartNotFoundError
 from services.repertoire_backup_service import BackupArchive
@@ -291,7 +291,7 @@ async def test_list_songs_command_sends_detailed_song_cards_when_result_fits() -
     reply.assert_awaited_once()
     message = reply.await_args.args[0]
     assert "Виконавець: Traditional" in message
-    assert "Джерело: -" in message
+    assert "Джерело (оригінал): -" in message
     assert "Нотатки: Slow intro." in message
     assert "Каподастр: 1" in message
     assert "Розмір: 3/4" in message
@@ -311,7 +311,7 @@ async def test_search_command_sends_detailed_song_cards_when_result_fits() -> No
     reply.assert_awaited_once()
     message = reply.await_args.args[0]
     assert "Виконавець: Traditional" in message
-    assert "Джерело: -" in message
+    assert "Джерело (оригінал): -" in message
     assert "Нотатки: Slow intro." in message
     assert "Каподастр: 1" in message
     assert "Розмір: 3/4" in message
@@ -458,6 +458,9 @@ async def test_upload_chart_media_moves_directly_to_chart_key_step() -> None:
     assert reply.await_args.args[0] == (
         "Тональність гармонії необов'язкова. Надішліть текст або «Пропустити»."
     )
+    keyboard = reply.await_args.kwargs["reply_markup"]
+    assert keyboard.keyboard[0][0].text == BUTTON_SKIP
+    assert keyboard.keyboard[0][1].text == BUTTON_CANCEL
 
 
 @pytest.mark.asyncio

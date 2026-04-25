@@ -14,4 +14,5 @@ This directory holds implementation notes for shipped features and feature fixes
 - [Docker Hub publish pipeline](dockerhub-publish-pipeline.md)
 - [Menu label alias routing](menu-label-alias-routing.md)
 - [Song artist and source URL split](song-artist-source-url-split.md)
+- [Start command recovery and copy fixes](start-command-recovery-and-copy-fixes.md)
 - [Ukrainian-only bot localization](ukrainian-localization.md)

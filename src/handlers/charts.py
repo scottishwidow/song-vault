@@ -24,7 +24,7 @@ from handlers.conversation import (
     user_state,
 )
 from handlers.messages import NEXT_ACTIONS_MESSAGE
-from handlers.ui import BUTTON_SKIP, cancel_markup
+from handlers.ui import BUTTON_SKIP, cancel_markup, skip_cancel_markup
 from services.chart_service import ChartFile, ChartUpload, SongChartNotFoundError
 from services.song_service import SongNotFoundError
 from storage.chart_storage import ChartStorageError
@@ -173,7 +173,7 @@ async def upload_chart_media(update: Update, context: ContextTypes.DEFAULT_TYPE)
     state["filename"] = filename
     await update.effective_message.reply_text(
         "Тональність гармонії необов'язкова. Надішліть текст або «Пропустити».",
-        reply_markup=cancel_markup(update),
+        reply_markup=skip_cancel_markup(update),
     )
     return UPLOAD_CHART_KEY
 
