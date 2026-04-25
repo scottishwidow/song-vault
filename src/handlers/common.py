@@ -4,6 +4,7 @@ from telegram import Update
 from telegram.ext import ContextTypes
 
 from bot.runtime import get_settings
+from handlers.messages import ADMIN_REQUIRED_MESSAGE
 from handlers.ui import home_menu_markup
 
 logger = logging.getLogger(__name__)
@@ -28,7 +29,7 @@ async def ensure_admin(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bo
     user = update.effective_user
     if user is None or user.id not in settings.admin_telegram_user_ids:
         if update.effective_message is not None:
-            await update.effective_message.reply_text("Для цієї дії потрібні права адміністратора.")
+            await update.effective_message.reply_text(ADMIN_REQUIRED_MESSAGE)
         return False
     return True
 

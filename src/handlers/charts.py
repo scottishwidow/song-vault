@@ -23,6 +23,7 @@ from handlers.conversation import (
     song_outcome_keyboard,
     user_state,
 )
+from handlers.messages import NEXT_ACTIONS_MESSAGE
 from handlers.ui import BUTTON_SKIP, cancel_markup
 from services.chart_service import ChartFile, ChartUpload, SongChartNotFoundError
 from services.song_service import SongNotFoundError
@@ -58,10 +59,14 @@ async def send_chart_for_song_id(
         await update.effective_message.reply_text(str(error))
         return
     except SongChartNotFoundError:
-        await update.effective_message.reply_text(f"Для пісні #{song_id} ще не завантажено акорди.")
+        await update.effective_message.reply_text(
+            f"Для пісні #{song_id} ще не завантажено гармонію."
+        )
         return
     except ChartStorageError:
-        await update.effective_message.reply_text("Не вдалося завантажити файл акордів зі сховища.")
+        await update.effective_message.reply_text(
+            "Не вдалося завантажити файл гармонії зі сховища."
+        )
         return
 
     caption = _chart_caption(chart_file)
@@ -122,7 +127,7 @@ async def _begin_upload_for_song_id(
         "return_page": _browser_return_page(context),
     }
     await update.effective_message.reply_text(
-        f"Ціль завантаження: пісня #{song_id}.\nНадішліть зображення акордів як фото або файл.",
+        f"Ціль завантаження: пісня #{song_id}.\nНадішліть зображення гармонії як фото або файл.",
         reply_markup=cancel_markup(update),
     )
     return UPLOAD_MEDIA
@@ -159,7 +164,7 @@ async def upload_chart_media(update: Update, context: ContextTypes.DEFAULT_TYPE)
         filename = document.file_name or f"song-{song_id}-chart"
     else:
         await update.effective_message.reply_text(
-            "Надішліть фото або зображення-документ (наприклад, image/png)."
+            "Надішліть фото або зображення-документ гармонії (наприклад, image/png)."
         )
         return UPLOAD_MEDIA
 
@@ -167,7 +172,7 @@ async def upload_chart_media(update: Update, context: ContextTypes.DEFAULT_TYPE)
     state["content_type"] = content_type
     state["filename"] = filename
     await update.effective_message.reply_text(
-        "Тональність акордів необов'язкова. Надішліть текст або «Пропустити».",
+        "Тональність гармонії необов'язкова. Надішліть текст або «Пропустити».",
         reply_markup=cancel_markup(update),
     )
     return UPLOAD_CHART_KEY
@@ -221,11 +226,11 @@ async def upload_chart_chart_key(update: Update, context: ContextTypes.DEFAULT_T
 
     user_state(context).pop(UPLOAD_CHART_STATE_KEY, None)
     await update.effective_message.reply_text(
-        f"Акорди #{chart.id} для пісні #{song_id} завантажено.",
+        f"Гармонію #{chart.id} для пісні #{song_id} завантажено.",
         reply_markup=home_or_remove_markup(update, context),
     )
     await update.effective_message.reply_text(
-        "Що далі?",
+        NEXT_ACTIONS_MESSAGE,
         reply_markup=song_outcome_keyboard(
             song_id=song_id,
             page=return_page,
@@ -290,7 +295,7 @@ def _chart_caption(chart_file: ChartFile) -> str:
         f"Пісня #{chart_file.song_id}: {chart_file.song_title}",
     ]
     if chart_file.chart_key:
-        lines.append(f"Тональність акордів: {chart_file.chart_key}")
+        lines.append(f"Тональність гармонії: {chart_file.chart_key}")
     if chart_file.source_url:
-        lines.append(f"Джерело акордів: {chart_file.source_url}")
+        lines.append(f"Джерело гармонії: {chart_file.source_url}")
     return "\n".join(lines)

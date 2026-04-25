@@ -17,6 +17,7 @@ from handlers.backup import (
 )
 from handlers.charts import (
     UPLOAD_CHART_KEY,
+    UPLOAD_MEDIA,
     build_upload_chart_handler,
     cancel_upload_chart,
     chart_command,
@@ -175,7 +176,7 @@ async def test_ensure_admin_rejects_non_admin() -> None:
     allowed = await ensure_admin(update, context)
 
     assert allowed is False
-    reply.assert_awaited_once_with("Для цієї дії потрібні права адміністратора.")
+    reply.assert_awaited_once_with("Ця дія доступна лише адміністраторам.")
 
 
 def test_add_song_conversation_filters_ignore_edited_messages() -> None:
@@ -264,7 +265,18 @@ async def test_list_songs_command_reports_empty_repertoire() -> None:
 
     await list_songs_command(update, context)
 
-    reply.assert_awaited_once_with("Ще немає активних пісень.")
+    reply.assert_awaited_once_with("У репертуарі ще немає активних пісень.")
+
+
+@pytest.mark.asyncio
+async def test_search_command_reports_empty_results_with_specific_copy() -> None:
+    update, reply = build_update()
+    song_service = SimpleNamespace(search_songs=AsyncMock(return_value=[]))
+    context = build_context(args=["missing"], song_service=song_service)
+
+    await search_songs_command(update, context)
+
+    reply.assert_awaited_once_with("За цим запитом пісень не знайдено.")
 
 
 @pytest.mark.asyncio
@@ -388,7 +400,7 @@ async def test_chart_command_reports_missing_chart() -> None:
 
     await chart_command(update, context)
 
-    reply.assert_awaited_once_with("Для пісні #7 ще не завантажено акорди.")
+    reply.assert_awaited_once_with("Для пісні #7 ще не завантажено гармонію.")
 
 
 @pytest.mark.asyncio
@@ -400,7 +412,7 @@ async def test_upload_chart_start_requires_admin() -> None:
     state = await upload_chart_start(update, context)
 
     assert state == -1
-    reply.assert_awaited_once_with("Для цієї дії потрібні права адміністратора.")
+    reply.assert_awaited_once_with("Ця дія доступна лише адміністраторам.")
     chart_service.assert_song_exists.assert_not_awaited()
 
 
@@ -444,7 +456,26 @@ async def test_upload_chart_media_moves_directly_to_chart_key_step() -> None:
 
     assert state == UPLOAD_CHART_KEY
     assert reply.await_args.args[0] == (
-        "Тональність акордів необов'язкова. Надішліть текст або «Пропустити»."
+        "Тональність гармонії необов'язкова. Надішліть текст або «Пропустити»."
+    )
+
+
+@pytest.mark.asyncio
+async def test_upload_chart_media_rejects_non_image_with_harmony_copy() -> None:
+    update, reply = build_update()
+    update.effective_message.photo = []
+    update.effective_message.document = SimpleNamespace(
+        mime_type="application/pdf",
+        file_name="chart.pdf",
+    )
+    context = build_context()
+    context.user_data["upload_chart_state"] = {"song_id": 5}
+
+    state = await upload_chart_media(update, context)
+
+    assert state == UPLOAD_MEDIA
+    reply.assert_awaited_once_with(
+        "Надішліть фото або зображення-документ гармонії (наприклад, image/png)."
     )
 
 
@@ -478,7 +509,7 @@ async def test_upload_chart_chart_key_sends_success_and_next_actions() -> None:
     assert state == -1
     assert "upload_chart_state" not in context.user_data
     assert reply.await_count == 2
-    assert reply.await_args_list[0].args[0] == "Акорди #12 для пісні #5 завантажено."
+    assert reply.await_args_list[0].args[0] == "Гармонію #12 для пісні #5 завантажено."
     assert reply.await_args_list[0].kwargs["reply_markup"].keyboard[0][0].text == MENU_START
     callbacks = [
         button.callback_data
@@ -541,7 +572,7 @@ async def test_add_song_artist_prompts_for_source_with_original_link_text() -> N
     state = await add_song_artist(update, context)
 
     assert state == ADD_SOURCE
-    assert reply.await_args.args[0] == "Джерело? (Посилання на оригінал)"
+    assert reply.await_args.args[0] == "Надішліть джерело пісні або «Пропустити»."
 
 
 @pytest.mark.asyncio
@@ -554,7 +585,7 @@ async def test_add_song_source_prompts_for_original_key() -> None:
     state = await add_song_source(update, context)
 
     assert state == ADD_KEY
-    assert reply.await_args.args[0] == "Оригінальна тональність?"
+    assert reply.await_args.args[0] == "Надішліть оригінальну тональність."
 
 
 @pytest.mark.asyncio
@@ -779,7 +810,7 @@ async def test_export_backup_command_requires_admin() -> None:
 
     await export_backup_command(update, context)
 
-    reply.assert_awaited_once_with("Для цієї дії потрібні права адміністратора.")
+    reply.assert_awaited_once_with("Ця дія доступна лише адміністраторам.")
     backup_service.export_backup.assert_not_awaited()
 
 
@@ -806,9 +837,9 @@ async def test_export_backup_command_sends_archive_document() -> None:
     assert sent_file.filename == "backup.zip"
     assert sent_file.input_file_content == b"zip-data"
     assert "Пісень: 2" in args["caption"]
-    assert "Акордів: 1" in args["caption"]
+    assert "Файлів гармонії: 1" in args["caption"]
     assert reply.await_count == 2
-    assert reply.await_args_list[0].args[0] == "Експорт резервної копії завершено."
+    assert reply.await_args_list[0].args[0] == "Резервну копію експортовано."
     assert reply.await_args_list[0].kwargs["reply_markup"].keyboard[0][0].text == MENU_START
     callbacks = [
         button.callback_data
@@ -827,7 +858,7 @@ async def test_import_backup_start_prompts_for_zip_file() -> None:
 
     assert state == IMPORT_BACKUP_UPLOAD
     assert reply.await_args.args[0] == (
-        "Надішліть .zip файл резервної копії для імпорту або натисніть «Скасувати»."
+        "Надішліть .zip файл резервної копії або натисніть «Скасувати»."
     )
     assert reply.await_args.kwargs["reply_markup"].keyboard[0][0].text == BUTTON_CANCEL
 
@@ -844,7 +875,7 @@ async def test_import_backup_file_rejects_non_zip_document() -> None:
     state = await import_backup_file(update, context)
 
     assert state == IMPORT_BACKUP_UPLOAD
-    reply.assert_awaited_once_with("Імпорт резервної копії очікує .zip файл документом.")
+    reply.assert_awaited_once_with("Потрібен .zip файл резервної копії, надісланий документом.")
 
 
 @pytest.mark.asyncio
@@ -868,7 +899,7 @@ async def test_import_backup_file_runs_restore_and_reports_success() -> None:
     assert reply.await_count == 2
     message = reply.await_args_list[0].args[0]
     assert "Відновлено пісень: 3" in message
-    assert "Відновлено акордів: 2" in message
+    assert "Відновлено файлів гармонії: 2" in message
     assert reply.await_args_list[0].kwargs["reply_markup"].keyboard[0][0].text == MENU_START
     callbacks = [
         button.callback_data

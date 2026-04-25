@@ -27,6 +27,12 @@ from handlers.conversation import (
     song_outcome_keyboard,
     user_state,
 )
+from handlers.messages import (
+    EMPTY_ACTIVE_SONGS_MESSAGE,
+    EMPTY_SEARCH_RESULTS_MESSAGE,
+    EMPTY_TAGS_MESSAGE,
+    NEXT_ACTIONS_MESSAGE,
+)
 from handlers.ui import (
     BUTTON_CANCEL,
     BUTTON_SKIP,
@@ -475,7 +481,7 @@ async def list_songs_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
     if update.effective_message is None:
         return
     if not songs:
-        await update.effective_message.reply_text("Ще немає активних пісень.")
+        await update.effective_message.reply_text(EMPTY_ACTIVE_SONGS_MESSAGE)
         return
     count = len(songs)
     base_header = f"Активні пісні ({count})"
@@ -498,7 +504,7 @@ async def search_songs_command(update: Update, context: ContextTypes.DEFAULT_TYP
     service = get_song_service(context)
     songs = await service.search_songs(query)
     if not songs:
-        await update.effective_message.reply_text("Нічого не знайдено.")
+        await update.effective_message.reply_text(EMPTY_SEARCH_RESULTS_MESSAGE)
         return
 
     count = len(songs)
@@ -517,7 +523,7 @@ async def tags_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     service = get_song_service(context)
     tags = await service.list_tags()
     if not tags:
-        await update.effective_message.reply_text("Теги ще не додано.")
+        await update.effective_message.reply_text(EMPTY_TAGS_MESSAGE)
         return
     await update.effective_message.reply_text("Теги: " + ", ".join(tags))
 
@@ -539,7 +545,7 @@ async def archive_song_command(update: Update, context: ContextTypes.DEFAULT_TYP
         await update.effective_message.reply_text(str(error))
         return
 
-    await update.effective_message.reply_text(f"Пісню #{song.id} архівовано: {song.title}")
+    await update.effective_message.reply_text(f"Пісню #{song.id} «{song.title}» архівовано.")
 
 
 async def cancel_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -556,7 +562,7 @@ async def add_song_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     user_state(context)[PENDING_SONG_KEY] = {}
     if update.effective_message is not None:
         await update.effective_message.reply_text(
-            "Назва?",
+            "Надішліть назву пісні.",
             reply_markup=cancel_markup(update),
         )
     return ADD_TITLE
@@ -566,7 +572,7 @@ async def add_song_title(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     user_state(context)[PENDING_SONG_KEY] = {"title": _message_text(update)}
     if update.effective_message is not None:
         await update.effective_message.reply_text(
-            "Виконавець?",
+            "Надішліть виконавця.",
             reply_markup=cancel_markup(update),
         )
     return ADD_ARTIST
@@ -577,7 +583,7 @@ async def add_song_artist(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     payload["artist"] = _message_text(update)
     if update.effective_message is not None:
         await update.effective_message.reply_text(
-            "Джерело? (Посилання на оригінал)",
+            "Надішліть джерело пісні або «Пропустити».",
             reply_markup=skip_cancel_markup(update),
         )
     return ADD_SOURCE
@@ -589,7 +595,7 @@ async def add_song_source(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     payload["source_url"] = None if text.lower() == BUTTON_SKIP.lower() else text
     if update.effective_message is not None:
         await update.effective_message.reply_text(
-            "Оригінальна тональність?",
+            "Надішліть оригінальну тональність.",
             reply_markup=cancel_markup(update),
         )
     return ADD_KEY
@@ -600,7 +606,7 @@ async def add_song_key(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
     payload["key"] = _message_text(update)
     if update.effective_message is not None:
         await update.effective_message.reply_text(
-            "Каподастр? Надішліть додатне число або «Пропустити».",
+            "Надішліть каподастр додатним числом або «Пропустити».",
             reply_markup=skip_cancel_markup(update),
         )
     return ADD_CAPO
@@ -629,7 +635,7 @@ async def add_song_capo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
         payload["capo"] = capo
     if update.effective_message is not None:
         await update.effective_message.reply_text(
-            "Розмір? Надішліть текст або «Пропустити».",
+            "Надішліть розмір або «Пропустити».",
             reply_markup=skip_cancel_markup(update),
         )
     return ADD_TIME_SIGNATURE
@@ -641,7 +647,7 @@ async def add_song_time_signature(update: Update, context: ContextTypes.DEFAULT_
     payload["time_signature"] = None if text.lower() == BUTTON_SKIP.lower() else text
     if update.effective_message is not None:
         await update.effective_message.reply_text(
-            "Темп BPM? Надішліть число або «Пропустити».",
+            "Надішліть темп BPM числом або «Пропустити».",
             reply_markup=skip_cancel_markup(update),
         )
     return ADD_TEMPO
@@ -661,7 +667,7 @@ async def add_song_tempo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             return ADD_TEMPO
     if update.effective_message is not None:
         await update.effective_message.reply_text(
-            "Теги? Надішліть значення через кому або «Пропустити».",
+            "Надішліть теги через кому або «Пропустити».",
             reply_markup=skip_cancel_markup(update),
         )
     return ADD_TAGS
@@ -673,7 +679,7 @@ async def add_song_tags(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
     payload["tags"] = [] if text.lower() == BUTTON_SKIP.lower() else parse_tag_input(text)
     if update.effective_message is not None:
         await update.effective_message.reply_text(
-            "Нотатки? Надішліть текст або «Пропустити».",
+            "Надішліть нотатки або «Пропустити».",
             reply_markup=skip_cancel_markup(update),
         )
     return ADD_NOTES
@@ -884,7 +890,7 @@ async def edit_song_value(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         reply_markup=home_or_remove_markup(update, context),
     )
     await update.effective_message.reply_text(
-        "Що далі?",
+        NEXT_ACTIONS_MESSAGE,
         reply_markup=song_outcome_keyboard(
             song_id=int(song.id),
             page=return_page,
