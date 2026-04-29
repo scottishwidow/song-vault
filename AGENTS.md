@@ -53,4 +53,3 @@ uv run pre-commit run --all-files
 - Add tests for service-layer and handler-layer changes.
 - Use soft archive semantics instead of hard deletes unless the task explicitly requires otherwise.
 - Keep documentation current when commands, env vars, or architecture change.
-- After finishing a feature or a fix for an existing feature, add or update a matching implementation note in `docs/features/`.
