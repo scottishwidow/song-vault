@@ -5,7 +5,7 @@ from collections.abc import Callable, Coroutine
 from dataclasses import dataclass
 from typing import Any, cast
 
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, LinkPreviewOptions, Update
 from telegram.ext import (
     BaseHandler,
     CallbackQueryHandler,
@@ -66,6 +66,7 @@ CLEAR_INPUT = "очистити"
 PENDING_SONG_KEY = "pending_song"
 EDIT_SONG_ID_KEY = "edit_song_id"
 EDIT_FIELD_KEY = "edit_field"
+SUPPRESS_LINK_PREVIEWS = LinkPreviewOptions(is_disabled=True)
 
 
 @dataclass(frozen=True, slots=True)
@@ -100,6 +101,12 @@ def format_song(song: Song) -> str:
 
 def format_compact_song(song: Song) -> str:
     return f"#{song.id} {song.title} | {song.artist} | Тональність: {song.key}"
+
+
+def song_link_preview_options(*songs: Song) -> LinkPreviewOptions | None:
+    if any(song.source_url for song in songs):
+        return SUPPRESS_LINK_PREVIEWS
+    return None
 
 
 def _status_label(status: SongStatus) -> str:
@@ -204,7 +211,10 @@ async def _reply_song_results(
 
     detailed_body = "\n\n".join(format_song(song) for song in songs)
     if len(detailed_body) <= RESULT_MESSAGE_CHAR_LIMIT:
-        await message.reply_text(detailed_body)
+        await message.reply_text(
+            detailed_body,
+            link_preview_options=song_link_preview_options(*songs),
+        )
         return
 
     compact_lines = [format_compact_song(song) for song in songs]
@@ -714,6 +724,7 @@ async def add_song_notes(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         await update.effective_message.reply_text(
             "Пісню створено:\n" + format_song(song),
             reply_markup=home_or_remove_markup(update, context),
+            link_preview_options=song_link_preview_options(song),
         )
     return ConversationHandler.END
 
@@ -770,6 +781,7 @@ async def _start_edit_song(
         + "\n\nЯке поле змінити? Натисніть кнопку нижче."
         + "\nНатисніть «Скасувати», щоб зупинити.",
         reply_markup=_edit_field_keyboard(song_id),
+        link_preview_options=song_link_preview_options(song),
     )
     return EDIT_FIELD
 
@@ -888,6 +900,7 @@ async def edit_song_value(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     await update.effective_message.reply_text(
         "Пісню оновлено:\n" + format_song(song),
         reply_markup=home_or_remove_markup(update, context),
+        link_preview_options=song_link_preview_options(song),
     )
     await update.effective_message.reply_text(
         NEXT_ACTIONS_MESSAGE,

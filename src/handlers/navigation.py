@@ -23,7 +23,7 @@ from handlers.messages import (
     EMPTY_SEARCH_RESULTS_MESSAGE,
     NEXT_ACTIONS_MESSAGE,
 )
-from handlers.repertoire import format_song, tags_command
+from handlers.repertoire import format_song, song_link_preview_options, tags_command
 from handlers.ui import (
     BUTTON_CANCEL,
     MAIN_MENU_BUTTONS,
@@ -437,7 +437,11 @@ async def _render_song_detail(
         page=page,
         is_admin=is_admin_user(update, context),
     )
-    await query.edit_message_text("Деталі пісні:\n" + format_song(song), reply_markup=keyboard)
+    await query.edit_message_text(
+        "Деталі пісні:\n" + format_song(song),
+        reply_markup=keyboard,
+        link_preview_options=song_link_preview_options(song),
+    )
 
 
 def _song_detail_keyboard(*, song_id: int, page: int, is_admin: bool) -> InlineKeyboardMarkup:

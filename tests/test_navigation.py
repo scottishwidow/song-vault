@@ -26,10 +26,12 @@ def build_song(
     song_id: int = 5,
     title: str = "Amazing Grace",
     artist: str = "Traditional",
+    source_url: str | None = None,
 ) -> Song:
     song = Song(
         title=title,
         artist=artist,
+        source_url=source_url,
         key="G",
         status=SongStatus.ACTIVE,
     )
@@ -97,6 +99,10 @@ def build_callback_update(
         effective_chat=SimpleNamespace(type="private"),
     )
     return update, query
+
+
+def assert_link_previews_disabled(call: object) -> None:
+    assert call.kwargs["link_preview_options"].is_disabled is True
 
 
 @pytest.mark.asyncio
@@ -308,6 +314,23 @@ async def test_song_detail_for_admin_shows_admin_action_buttons() -> None:
     assert "Редагувати" in labels
     assert "Архівувати" in labels
     assert "Завантажити гармонію" in labels
+
+
+@pytest.mark.asyncio
+async def test_song_detail_suppresses_previews_for_visible_source_url() -> None:
+    song = build_song(source_url="https://example.org/source")
+    song_service = SimpleNamespace(get_song=AsyncMock(return_value=song))
+    context = build_context(song_service=song_service, admin_ids=(1,))
+    update, query = build_callback_update(data="song:detail:5:0", user_id=1)
+
+    await navigation_callback_router(update, context)
+
+    query.edit_message_text.assert_awaited_once()
+    assert (
+        "Джерело (оригінал): https://example.org/source"
+        in query.edit_message_text.await_args.args[0]
+    )
+    assert_link_previews_disabled(query.edit_message_text.await_args)
 
 
 @pytest.mark.asyncio

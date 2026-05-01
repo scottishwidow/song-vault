@@ -168,6 +168,10 @@ def build_telegram_update(*, edited: bool, text: str = "value") -> Update:
     return Update(update_id=1, message=message)
 
 
+def assert_link_previews_disabled(call: object) -> None:
+    assert call.kwargs["link_preview_options"].is_disabled is True
+
+
 @pytest.mark.asyncio
 async def test_ensure_admin_rejects_non_admin() -> None:
     update, reply = build_update(user_id=999)
@@ -300,6 +304,20 @@ async def test_list_songs_command_sends_detailed_song_cards_when_result_fits() -
 
 
 @pytest.mark.asyncio
+async def test_list_songs_command_suppresses_previews_for_visible_source_urls() -> None:
+    update, reply = build_update()
+    song = build_song(source_url="https://example.org/amazing-grace")
+    song_service = SimpleNamespace(list_songs=AsyncMock(return_value=[song]))
+    context = build_context(song_service=song_service)
+
+    await list_songs_command(update, context)
+
+    reply.assert_awaited_once()
+    assert "Джерело (оригінал): https://example.org/amazing-grace" in reply.await_args.args[0]
+    assert_link_previews_disabled(reply.await_args)
+
+
+@pytest.mark.asyncio
 async def test_search_command_sends_detailed_song_cards_when_result_fits() -> None:
     update, reply = build_update()
     song = build_song()
@@ -316,6 +334,20 @@ async def test_search_command_sends_detailed_song_cards_when_result_fits() -> No
     assert "Каподастр: 1" in message
     assert "Розмір: 3/4" in message
     assert not message.startswith('Результати для "grace" (')
+
+
+@pytest.mark.asyncio
+async def test_search_command_suppresses_previews_for_visible_source_urls() -> None:
+    update, reply = build_update()
+    song = build_song(source_url="https://example.org/amazing-grace")
+    song_service = SimpleNamespace(search_songs=AsyncMock(return_value=[song]))
+    context = build_context(args=["grace"], song_service=song_service)
+
+    await search_songs_command(update, context)
+
+    reply.assert_awaited_once()
+    assert "Джерело (оригінал): https://example.org/amazing-grace" in reply.await_args.args[0]
+    assert_link_previews_disabled(reply.await_args)
 
 
 @pytest.mark.asyncio
@@ -566,6 +598,20 @@ async def test_edit_song_start_shows_editable_field_previews() -> None:
 
 
 @pytest.mark.asyncio
+async def test_edit_song_start_suppresses_previews_for_visible_source_url() -> None:
+    update, reply = build_update()
+    song = build_song(source_url="https://example.org/source")
+    song_service = SimpleNamespace(get_song=AsyncMock(return_value=song))
+    context = build_context(args=["5"], song_service=song_service)
+
+    state = await edit_song_start(update, context)
+
+    assert state == EDIT_FIELD
+    assert "Джерело (оригінал): https://example.org/source" in reply.await_args.args[0]
+    assert_link_previews_disabled(reply.await_args)
+
+
+@pytest.mark.asyncio
 async def test_add_song_artist_prompts_for_source_with_original_link_text() -> None:
     update, reply = build_update()
     context = build_context()
@@ -615,6 +661,31 @@ async def test_add_song_notes_creates_song_without_arrangement_notes_step() -> N
     payload = song_service.create_song.await_args.args[0]
     assert payload.arrangement_notes is None
     assert "Пісню створено:" in reply.await_args.args[0]
+
+
+@pytest.mark.asyncio
+async def test_add_song_notes_suppresses_previews_for_visible_source_url() -> None:
+    update, reply = build_update()
+    update.effective_message.text = "Пропустити"
+    created_song = build_song(source_url="https://example.org/source")
+    song_service = SimpleNamespace(create_song=AsyncMock(return_value=created_song))
+    context = build_context(song_service=song_service)
+    context.user_data["pending_song"] = {
+        "title": "Amazing Grace",
+        "artist": "Traditional",
+        "source_url": "https://example.org/source",
+        "key": "G",
+        "capo": 1,
+        "time_signature": "3/4",
+        "tempo_bpm": 72,
+        "tags": ["hymn", "classic"],
+    }
+
+    state = await add_song_notes(update, context)
+
+    assert state == -1
+    assert "Джерело (оригінал): https://example.org/source" in reply.await_args.args[0]
+    assert_link_previews_disabled(reply.await_args)
 
 
 @pytest.mark.asyncio
@@ -803,6 +874,26 @@ async def test_edit_song_value_updates_song_and_clears_state() -> None:
         for button in row
     ]
     assert callbacks == ["song:detail:5:2", "browser:page:b:2", "nav:home"]
+
+
+@pytest.mark.asyncio
+async def test_edit_song_value_suppresses_previews_for_visible_source_url() -> None:
+    update, reply = build_update()
+    updated_song = build_song(source_url="https://example.org/source")
+    song_service = SimpleNamespace(
+        update_song=AsyncMock(return_value=updated_song),
+    )
+    context = build_context(song_service=song_service)
+    context.user_data[EDIT_SONG_ID_KEY] = updated_song.id
+    context.user_data[EDIT_FIELD_KEY] = "title"
+    update.effective_message.text = "Amazing Grace"
+
+    state = await edit_song_value(update, context)
+
+    assert state == -1
+    success_call = reply.await_args_list[0]
+    assert "Джерело (оригінал): https://example.org/source" in success_call.args[0]
+    assert_link_previews_disabled(success_call)
 
 
 @pytest.mark.asyncio
