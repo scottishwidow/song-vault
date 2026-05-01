@@ -71,6 +71,13 @@ async def send_chart_for_song_id(
 
     caption = _chart_caption(chart_file)
     file_stream = BytesIO(chart_file.content)
+    if chart_file.content_type.startswith("image/"):
+        await update.effective_message.reply_photo(
+            photo=InputFile(file_stream, filename=chart_file.original_filename),
+            caption=caption,
+        )
+        return
+
     await update.effective_message.reply_document(
         document=InputFile(file_stream, filename=chart_file.original_filename),
         caption=caption,

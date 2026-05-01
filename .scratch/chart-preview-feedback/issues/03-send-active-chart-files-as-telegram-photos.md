@@ -1,6 +1,6 @@
 # Send active chart files as Telegram photos
 
-Status: needs-triage
+Status: done
 
 ## What to build
 
@@ -8,11 +8,11 @@ Update the shared chart delivery path so active image chart files are sent as vi
 
 ## Acceptance criteria
 
-- [ ] Active chart delivery attempts Telegram photo delivery for image chart files.
-- [ ] The `/chart` command uses the shared photo-capable chart delivery path.
-- [ ] Manual chart callbacks use the shared photo-capable chart delivery path.
-- [ ] Captions continue to include the same chart context currently shown during chart delivery.
-- [ ] Handler tests cover successful photo delivery for active charts.
+- [x] Active chart delivery attempts Telegram photo delivery for image chart files.
+- [x] The `/chart` command uses the shared photo-capable chart delivery path.
+- [x] Manual chart callbacks use the shared photo-capable chart delivery path.
+- [x] Captions continue to include the same chart context currently shown during chart delivery.
+- [x] Handler tests cover successful photo delivery for active charts.
 
 ## Blocked by
 

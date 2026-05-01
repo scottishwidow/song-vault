@@ -19,6 +19,7 @@ from handlers.navigation import (
 )
 from handlers.ui import MENU_BACKUP, MENU_SEARCH, MENU_SONGS, MENU_START, MENU_UPLOAD_CHART
 from models.song import Song, SongStatus
+from services.chart_service import ChartFile
 
 
 def build_song(
@@ -89,16 +90,26 @@ def build_callback_update(
     user_id: int = 1,
 ) -> tuple[SimpleNamespace, SimpleNamespace]:
     reply = AsyncMock()
+    reply_document = AsyncMock()
+    reply_photo = AsyncMock()
     query = SimpleNamespace(
         data=data,
         answer=AsyncMock(),
         edit_message_reply_markup=AsyncMock(),
         edit_message_text=AsyncMock(),
-        message=SimpleNamespace(reply_text=reply),
+        message=SimpleNamespace(
+            reply_text=reply,
+            reply_document=reply_document,
+            reply_photo=reply_photo,
+        ),
     )
     update = SimpleNamespace(
         callback_query=query,
-        effective_message=SimpleNamespace(reply_text=reply),
+        effective_message=SimpleNamespace(
+            reply_text=reply,
+            reply_document=reply_document,
+            reply_photo=reply_photo,
+        ),
         effective_user=SimpleNamespace(id=user_id),
         effective_chat=SimpleNamespace(type="private"),
     )
@@ -379,6 +390,37 @@ async def test_song_detail_suppresses_previews_for_visible_source_url() -> None:
         in query.edit_message_text.await_args.args[0]
     )
     assert_link_previews_disabled(query.edit_message_text.await_args)
+
+
+@pytest.mark.asyncio
+async def test_manual_chart_callback_sends_image_chart_as_photo_with_caption() -> None:
+    chart_file = ChartFile(
+        song_id=5,
+        song_title="Amazing Grace",
+        original_filename="amazing-grace.png",
+        content_type="image/png",
+        source_url="https://example.org/chart",
+        chart_key="G",
+        content=b"chart-bytes",
+    )
+    song_service = SimpleNamespace()
+    chart_service = SimpleNamespace(get_active_chart_file=AsyncMock(return_value=chart_file))
+    context = build_context(song_service=song_service, chart_service=chart_service)
+    update, query = build_callback_update(data="song:view:5", user_id=2)
+
+    await navigation_callback_router(update, context)
+
+    query.answer.assert_awaited_once()
+    chart_service.get_active_chart_file.assert_awaited_once_with(5)
+    update.effective_message.reply_photo.assert_awaited_once()
+    kwargs = update.effective_message.reply_photo.await_args.kwargs
+    assert kwargs["caption"] == (
+        "Пісня #5: Amazing Grace\n"
+        "Тональність гармонії: G\n"
+        "Джерело гармонії: https://example.org/chart"
+    )
+    assert kwargs["photo"].filename == "amazing-grace.png"
+    update.effective_message.reply_document.assert_not_awaited()
 
 
 @pytest.mark.asyncio

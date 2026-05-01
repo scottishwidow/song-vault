@@ -49,7 +49,7 @@ from handlers.repertoire import (
 )
 from handlers.ui import BUTTON_CANCEL, BUTTON_SKIP, MENU_START
 from models.song import Song, SongStatus
-from services.chart_service import SongChartNotFoundError
+from services.chart_service import ChartFile, SongChartNotFoundError
 from services.repertoire_backup_service import BackupArchive
 from services.song_service import SongNotFoundError
 
@@ -84,9 +84,11 @@ def build_context(
 def build_update(*, user_id: int = 1) -> tuple[SimpleNamespace, AsyncMock]:
     reply = AsyncMock()
     reply_document = AsyncMock()
+    reply_photo = AsyncMock()
     message = SimpleNamespace(
         reply_text=reply,
         reply_document=reply_document,
+        reply_photo=reply_photo,
         text=None,
         document=None,
     )
@@ -433,6 +435,34 @@ async def test_chart_command_reports_missing_chart() -> None:
     await chart_command(update, context)
 
     reply.assert_awaited_once_with("Для пісні #7 ще не завантажено гармонію.")
+
+
+@pytest.mark.asyncio
+async def test_chart_command_sends_image_chart_as_photo_with_caption() -> None:
+    update, _ = build_update()
+    chart_file = ChartFile(
+        song_id=7,
+        song_title="Amazing Grace",
+        original_filename="amazing-grace.png",
+        content_type="image/png",
+        source_url="https://example.org/chart",
+        chart_key="G",
+        content=b"chart-bytes",
+    )
+    chart_service = SimpleNamespace(get_active_chart_file=AsyncMock(return_value=chart_file))
+    context = build_context(args=["7"], chart_service=chart_service)
+
+    await chart_command(update, context)
+
+    update.effective_message.reply_photo.assert_awaited_once()
+    kwargs = update.effective_message.reply_photo.await_args.kwargs
+    assert kwargs["caption"] == (
+        "Пісня #7: Amazing Grace\n"
+        "Тональність гармонії: G\n"
+        "Джерело гармонії: https://example.org/chart"
+    )
+    assert kwargs["photo"].filename == "amazing-grace.png"
+    update.effective_message.reply_document.assert_not_awaited()
 
 
 @pytest.mark.asyncio
