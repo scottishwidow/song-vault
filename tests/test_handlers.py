@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 from telegram import Chat, Message, Update, User
+from telegram.error import TelegramError
 
 from bot.runtime import BACKUP_SERVICE_KEY, CHART_SERVICE_KEY, SETTINGS_KEY, SONG_SERVICE_KEY
 from config.settings import Settings
@@ -52,6 +53,7 @@ from models.song import Song, SongStatus
 from services.chart_service import ChartFile, SongChartNotFoundError
 from services.repertoire_backup_service import BackupArchive
 from services.song_service import SongNotFoundError
+from storage.chart_storage import ChartStorageError
 
 
 def build_context(
@@ -438,6 +440,19 @@ async def test_chart_command_reports_missing_chart() -> None:
 
 
 @pytest.mark.asyncio
+async def test_chart_command_reports_chart_storage_failure() -> None:
+    update, reply = build_update()
+    chart_service = SimpleNamespace(
+        get_active_chart_file=AsyncMock(side_effect=ChartStorageError("download failed"))
+    )
+    context = build_context(args=["7"], chart_service=chart_service)
+
+    await chart_command(update, context)
+
+    reply.assert_awaited_once_with("Не вдалося завантажити файл гармонії зі сховища.")
+
+
+@pytest.mark.asyncio
 async def test_chart_command_sends_image_chart_as_photo_with_caption() -> None:
     update, _ = build_update()
     chart_file = ChartFile(
@@ -463,6 +478,63 @@ async def test_chart_command_sends_image_chart_as_photo_with_caption() -> None:
     )
     assert kwargs["photo"].filename == "amazing-grace.png"
     update.effective_message.reply_document.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_chart_command_falls_back_to_document_when_photo_delivery_fails() -> None:
+    update, _ = build_update()
+    update.effective_message.reply_photo.side_effect = TelegramError("photo rejected")
+    chart_file = ChartFile(
+        song_id=7,
+        song_title="Amazing Grace",
+        original_filename="amazing-grace.png",
+        content_type="image/png",
+        source_url="https://example.org/chart",
+        chart_key="G",
+        content=b"chart-bytes",
+    )
+    chart_service = SimpleNamespace(get_active_chart_file=AsyncMock(return_value=chart_file))
+    context = build_context(args=["7"], chart_service=chart_service)
+
+    await chart_command(update, context)
+
+    update.effective_message.reply_photo.assert_awaited_once()
+    update.effective_message.reply_document.assert_awaited_once()
+    kwargs = update.effective_message.reply_document.await_args.kwargs
+    assert kwargs["caption"] == (
+        "Пісня #7: Amazing Grace\n"
+        "Тональність гармонії: G\n"
+        "Джерело гармонії: https://example.org/chart"
+    )
+    assert kwargs["document"].filename == "amazing-grace.png"
+
+
+@pytest.mark.asyncio
+async def test_chart_command_sends_svg_chart_as_document_without_photo_attempt() -> None:
+    update, _ = build_update()
+    chart_file = ChartFile(
+        song_id=7,
+        song_title="Amazing Grace",
+        original_filename="amazing-grace.svg",
+        content_type="image/svg+xml",
+        source_url="https://example.org/chart",
+        chart_key="G",
+        content=b"<svg />",
+    )
+    chart_service = SimpleNamespace(get_active_chart_file=AsyncMock(return_value=chart_file))
+    context = build_context(args=["7"], chart_service=chart_service)
+
+    await chart_command(update, context)
+
+    update.effective_message.reply_photo.assert_not_awaited()
+    update.effective_message.reply_document.assert_awaited_once()
+    kwargs = update.effective_message.reply_document.await_args.kwargs
+    assert kwargs["caption"] == (
+        "Пісня #7: Amazing Grace\n"
+        "Тональність гармонії: G\n"
+        "Джерело гармонії: https://example.org/chart"
+    )
+    assert kwargs["document"].filename == "amazing-grace.svg"
 
 
 @pytest.mark.asyncio

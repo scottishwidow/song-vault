@@ -3,6 +3,7 @@ from __future__ import annotations
 from io import BytesIO
 
 from telegram import InputFile, Update
+from telegram.error import TelegramError
 from telegram.ext import (
     CallbackQueryHandler,
     ContextTypes,
@@ -31,6 +32,7 @@ from storage.chart_storage import ChartStorageError
 
 UPLOAD_MEDIA, UPLOAD_CHART_KEY = range(2)
 UPLOAD_CHART_STATE_KEY = "upload_chart_state"
+TELEGRAM_PHOTO_CONTENT_TYPES = frozenset({"image/jpeg", "image/png", "image/webp"})
 
 
 async def chart_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -70,16 +72,18 @@ async def send_chart_for_song_id(
         return
 
     caption = _chart_caption(chart_file)
-    file_stream = BytesIO(chart_file.content)
-    if chart_file.content_type.startswith("image/"):
-        await update.effective_message.reply_photo(
-            photo=InputFile(file_stream, filename=chart_file.original_filename),
-            caption=caption,
-        )
-        return
+    if _can_send_as_photo(chart_file):
+        try:
+            await update.effective_message.reply_photo(
+                photo=_chart_input_file(chart_file),
+                caption=caption,
+            )
+            return
+        except TelegramError:
+            pass
 
     await update.effective_message.reply_document(
-        document=InputFile(file_stream, filename=chart_file.original_filename),
+        document=_chart_input_file(chart_file),
         caption=caption,
     )
 
@@ -306,3 +310,12 @@ def _chart_caption(chart_file: ChartFile) -> str:
     if chart_file.source_url:
         lines.append(f"Джерело гармонії: {chart_file.source_url}")
     return "\n".join(lines)
+
+
+def _chart_input_file(chart_file: ChartFile) -> InputFile:
+    return InputFile(BytesIO(chart_file.content), filename=chart_file.original_filename)
+
+
+def _can_send_as_photo(chart_file: ChartFile) -> bool:
+    content_type = chart_file.content_type.split(";", maxsplit=1)[0].strip().lower()
+    return content_type in TELEGRAM_PHOTO_CONTENT_TYPES
