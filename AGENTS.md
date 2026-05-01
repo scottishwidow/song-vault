@@ -4,6 +4,20 @@
 
 This repository hosts a Telegram bot for repertoire management. Keep the baseline simple, async-first, and service-oriented.
 
+## Agent skills
+
+### Issue tracker
+
+Issues and PRDs are tracked as local markdown files under `.scratch/`. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+The repo uses the default mattpocock/skills triage labels. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+This repo uses a single-context domain documentation layout. See `docs/agents/domain.md`.
+
 ## Commit Hygiene
 - After completing any task, **always propose a commit message** if the task is code based.
 - If the current branch is `main`, **always create and switch to a new branch** before making code changes.
