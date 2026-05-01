@@ -5,7 +5,7 @@ from typing import TypedDict, cast
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import CallbackQueryHandler, ContextTypes, MessageHandler, filters
 
-from bot.runtime import get_song_service
+from bot.runtime import get_chart_service, get_song_service
 from handlers.backup import export_backup_command
 from handlers.charts import send_chart_for_song_id
 from handlers.common import help_command, send_home_screen
@@ -432,10 +432,13 @@ async def _render_song_detail(
         await query.edit_message_text(str(error))
         return
 
+    chart_service = get_chart_service(context)
+    has_active_chart = await chart_service.has_active_chart(song_id)
     keyboard = _song_detail_keyboard(
         song_id=song_id,
         page=page,
         is_admin=is_admin_user(update, context),
+        has_active_chart=has_active_chart,
     )
     await query.edit_message_text(
         "Деталі пісні:\n" + format_song(song),
@@ -444,10 +447,18 @@ async def _render_song_detail(
     )
 
 
-def _song_detail_keyboard(*, song_id: int, page: int, is_admin: bool) -> InlineKeyboardMarkup:
-    rows: list[list[InlineKeyboardButton]] = [
-        [InlineKeyboardButton("Переглянути гармонію", callback_data=f"song:view:{song_id}")],
-    ]
+def _song_detail_keyboard(
+    *,
+    song_id: int,
+    page: int,
+    is_admin: bool,
+    has_active_chart: bool,
+) -> InlineKeyboardMarkup:
+    rows: list[list[InlineKeyboardButton]] = []
+    if has_active_chart:
+        rows.append(
+            [InlineKeyboardButton("Переглянути гармонію", callback_data=f"song:view:{song_id}")]
+        )
     if is_admin:
         rows.append(
             [

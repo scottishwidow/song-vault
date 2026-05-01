@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from bot.runtime import SETTINGS_KEY, SONG_SERVICE_KEY
+from bot.runtime import CHART_SERVICE_KEY, SETTINGS_KEY, SONG_SERVICE_KEY
 from config.settings import Settings
 from handlers.navigation import (
     SEARCH_PENDING_KEY,
@@ -45,8 +45,11 @@ def build_song(
 def build_context(
     *,
     song_service: object,
+    chart_service: object | None = None,
     admin_ids: tuple[int, ...] = (1,),
 ) -> SimpleNamespace:
+    if chart_service is None:
+        chart_service = SimpleNamespace(has_active_chart=AsyncMock(return_value=True))
     settings = Settings(
         TELEGRAM_BOT_TOKEN="token",
         ADMIN_TELEGRAM_USER_IDS=admin_ids,
@@ -58,6 +61,7 @@ def build_context(
             bot_data={
                 SETTINGS_KEY: settings,
                 SONG_SERVICE_KEY: song_service,
+                CHART_SERVICE_KEY: chart_service,
             }
         ),
     )
@@ -270,7 +274,8 @@ async def test_backup_menu_rejects_non_admin_with_shared_copy() -> None:
 async def test_song_detail_for_non_admin_hides_admin_action_buttons() -> None:
     song = build_song()
     song_service = SimpleNamespace(get_song=AsyncMock(return_value=song))
-    context = build_context(song_service=song_service, admin_ids=(1,))
+    chart_service = SimpleNamespace(has_active_chart=AsyncMock(return_value=True))
+    context = build_context(song_service=song_service, chart_service=chart_service, admin_ids=(1,))
     context.user_data[SONG_BROWSER_STATE_KEY] = {
         "mode": "browse",
         "title": "Активні пісні",
@@ -290,13 +295,35 @@ async def test_song_detail_for_non_admin_hides_admin_action_buttons() -> None:
     assert "Завантажити гармонію" not in labels
     assert "Переглянути гармонію" in labels
     assert "Назад до результатів" in labels
+    chart_service.has_active_chart.assert_awaited_once_with(5)
+
+
+@pytest.mark.asyncio
+async def test_song_detail_for_non_admin_hides_chart_button_when_no_active_chart() -> None:
+    song = build_song()
+    song_service = SimpleNamespace(get_song=AsyncMock(return_value=song))
+    chart_service = SimpleNamespace(has_active_chart=AsyncMock(return_value=False))
+    context = build_context(song_service=song_service, chart_service=chart_service, admin_ids=(1,))
+    update, query = build_callback_update(data="song:detail:5:0", user_id=2)
+
+    await navigation_callback_router(update, context)
+
+    keyboard = query.edit_message_text.await_args.kwargs["reply_markup"]
+    labels = [button.text for row in keyboard.inline_keyboard for button in row]
+    assert "Переглянути гармонію" not in labels
+    assert "Редагувати" not in labels
+    assert "Архівувати" not in labels
+    assert "Завантажити гармонію" not in labels
+    assert "Назад до результатів" in labels
+    chart_service.has_active_chart.assert_awaited_once_with(5)
 
 
 @pytest.mark.asyncio
 async def test_song_detail_for_admin_shows_admin_action_buttons() -> None:
     song = build_song()
     song_service = SimpleNamespace(get_song=AsyncMock(return_value=song))
-    context = build_context(song_service=song_service, admin_ids=(1,))
+    chart_service = SimpleNamespace(has_active_chart=AsyncMock(return_value=True))
+    context = build_context(song_service=song_service, chart_service=chart_service, admin_ids=(1,))
     context.user_data[SONG_BROWSER_STATE_KEY] = {
         "mode": "browse",
         "title": "Активні пісні",
@@ -314,6 +341,27 @@ async def test_song_detail_for_admin_shows_admin_action_buttons() -> None:
     assert "Редагувати" in labels
     assert "Архівувати" in labels
     assert "Завантажити гармонію" in labels
+    assert "Переглянути гармонію" in labels
+    chart_service.has_active_chart.assert_awaited_once_with(5)
+
+
+@pytest.mark.asyncio
+async def test_song_detail_for_admin_keeps_admin_actions_when_no_active_chart() -> None:
+    song = build_song()
+    song_service = SimpleNamespace(get_song=AsyncMock(return_value=song))
+    chart_service = SimpleNamespace(has_active_chart=AsyncMock(return_value=False))
+    context = build_context(song_service=song_service, chart_service=chart_service, admin_ids=(1,))
+    update, query = build_callback_update(data="song:detail:5:0", user_id=1)
+
+    await navigation_callback_router(update, context)
+
+    keyboard = query.edit_message_text.await_args.kwargs["reply_markup"]
+    labels = [button.text for row in keyboard.inline_keyboard for button in row]
+    assert "Переглянути гармонію" not in labels
+    assert "Редагувати" in labels
+    assert "Архівувати" in labels
+    assert "Завантажити гармонію" in labels
+    chart_service.has_active_chart.assert_awaited_once_with(5)
 
 
 @pytest.mark.asyncio
