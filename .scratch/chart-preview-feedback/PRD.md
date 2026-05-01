@@ -1,6 +1,6 @@
 # Chart Preview Feedback
 
-Status: needs-triage
+Status: done
 
 ## Problem Statement
 
