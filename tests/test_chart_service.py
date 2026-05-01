@@ -17,6 +17,7 @@ class FakeChartStorage:
         self.bucket = bucket
         self.objects: dict[str, tuple[bytes, str]] = {}
         self.deleted: list[str] = []
+        self.get_requests: list[tuple[str, str]] = []
 
     async def ensure_ready(self) -> None:
         return None
@@ -37,6 +38,7 @@ class FakeChartStorage:
         )
 
     async def get_chart(self, *, bucket: str, object_key: str) -> StoredChartBinary:
+        self.get_requests.append((bucket, object_key))
         if bucket != self.bucket or object_key not in self.objects:
             raise ChartStorageError("Object not found.")
         content, content_type = self.objects[object_key]
@@ -217,3 +219,25 @@ async def test_chart_service_raises_when_song_has_no_chart(
 
     with pytest.raises(SongChartNotFoundError):
         await chart_service.get_active_chart_file(song.id)
+
+
+@pytest.mark.asyncio
+async def test_chart_service_reports_active_chart_availability_without_downloading_bytes(
+    chart_fixture: tuple[ChartService, FakeSessionFactory, FakeChartStorage],
+) -> None:
+    chart_service, session_factory, storage = chart_fixture
+    song = session_factory.add_song(4, title="Firm Foundation")
+
+    assert await chart_service.has_active_chart(song.id) is False
+
+    await chart_service.upload_chart(
+        song.id,
+        ChartUpload(
+            original_filename="firm-foundation.png",
+            content_type="image/png",
+            content=b"chart-bytes",
+        ),
+    )
+
+    assert await chart_service.has_active_chart(song.id) is True
+    assert storage.get_requests == []

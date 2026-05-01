@@ -135,6 +135,15 @@ class ChartService:
             content=stored_binary.content,
         )
 
+    async def has_active_chart(self, song_id: int) -> bool:
+        async with self._session_factory() as session:
+            statement = select(SongChart.id).where(
+                SongChart.song_id == song_id,
+                SongChart.status == SongChartStatus.ACTIVE,
+            )
+            chart_id = await session.scalar(statement)
+            return chart_id is not None
+
 
 def _clean_optional(value: str | None) -> str | None:
     if value is None:
