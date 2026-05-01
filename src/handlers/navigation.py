@@ -445,6 +445,13 @@ async def _render_song_detail(
         reply_markup=keyboard,
         link_preview_options=song_link_preview_options(song),
     )
+    if has_active_chart:
+        await send_chart_for_song_id(
+            update,
+            context,
+            song_id,
+            suppress_missing_chart_error=True,
+        )
 
 
 def _song_detail_keyboard(

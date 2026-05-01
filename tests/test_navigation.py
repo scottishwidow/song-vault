@@ -19,7 +19,8 @@ from handlers.navigation import (
 )
 from handlers.ui import MENU_BACKUP, MENU_SEARCH, MENU_SONGS, MENU_START, MENU_UPLOAD_CHART
 from models.song import Song, SongStatus
-from services.chart_service import ChartFile
+from services.chart_service import ChartFile, SongChartNotFoundError
+from storage.chart_storage import ChartStorageError
 
 
 def build_song(
@@ -43,6 +44,18 @@ def build_song(
     return song
 
 
+def build_chart_file() -> ChartFile:
+    return ChartFile(
+        song_id=5,
+        song_title="Amazing Grace",
+        original_filename="amazing-grace.png",
+        content_type="image/png",
+        source_url="https://example.org/chart",
+        chart_key="G",
+        content=b"chart-bytes",
+    )
+
+
 def build_context(
     *,
     song_service: object,
@@ -50,7 +63,10 @@ def build_context(
     admin_ids: tuple[int, ...] = (1,),
 ) -> SimpleNamespace:
     if chart_service is None:
-        chart_service = SimpleNamespace(has_active_chart=AsyncMock(return_value=True))
+        chart_service = SimpleNamespace(
+            has_active_chart=AsyncMock(return_value=False),
+            get_active_chart_file=AsyncMock(),
+        )
     settings = Settings(
         TELEGRAM_BOT_TOKEN="token",
         ADMIN_TELEGRAM_USER_IDS=admin_ids,
@@ -123,7 +139,11 @@ def assert_link_previews_disabled(call: object) -> None:
 @pytest.mark.asyncio
 async def test_menu_songs_button_opens_song_browser() -> None:
     song_service = SimpleNamespace(list_songs=AsyncMock(return_value=[build_song()]))
-    context = build_context(song_service=song_service)
+    chart_service = SimpleNamespace(
+        has_active_chart=AsyncMock(return_value=True),
+        get_active_chart_file=AsyncMock(),
+    )
+    context = build_context(song_service=song_service, chart_service=chart_service)
     update, reply = build_message_update(text=MENU_SONGS)
 
     await menu_text_router(update, context)
@@ -134,6 +154,7 @@ async def test_menu_songs_button_opens_song_browser() -> None:
     assert "Активні пісні (1)" in message_text
     keyboard = reply.await_args.kwargs["reply_markup"]
     assert keyboard.inline_keyboard[0][0].callback_data == "song:detail:5:0"
+    chart_service.get_active_chart_file.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -159,7 +180,11 @@ async def test_menu_search_prompt_then_query_opens_browser_results() -> None:
         search_songs=AsyncMock(return_value=[song]),
         list_songs=AsyncMock(return_value=[]),
     )
-    context = build_context(song_service=song_service)
+    chart_service = SimpleNamespace(
+        has_active_chart=AsyncMock(return_value=True),
+        get_active_chart_file=AsyncMock(),
+    )
+    context = build_context(song_service=song_service, chart_service=chart_service)
     prompt_update, prompt_reply = build_message_update(text=MENU_SEARCH)
 
     await menu_text_router(prompt_update, context)
@@ -179,6 +204,7 @@ async def test_menu_search_prompt_then_query_opens_browser_results() -> None:
     query_reply.assert_awaited_once()
     message_text = query_reply.await_args.args[0]
     assert 'Результати для "grace" (1)' in message_text
+    chart_service.get_active_chart_file.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -250,12 +276,17 @@ async def test_menu_search_empty_results_uses_specific_copy() -> None:
 @pytest.mark.asyncio
 async def test_menu_tags_empty_state_uses_specific_copy() -> None:
     song_service = SimpleNamespace(list_tags=AsyncMock(return_value=[]))
-    context = build_context(song_service=song_service)
+    chart_service = SimpleNamespace(
+        has_active_chart=AsyncMock(return_value=True),
+        get_active_chart_file=AsyncMock(),
+    )
+    context = build_context(song_service=song_service, chart_service=chart_service)
     update, reply = build_message_update(text="Теги")
 
     await menu_text_router(update, context)
 
     reply.assert_awaited_once_with("Теги ще не додано.")
+    chart_service.get_active_chart_file.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -285,7 +316,10 @@ async def test_backup_menu_rejects_non_admin_with_shared_copy() -> None:
 async def test_song_detail_for_non_admin_hides_admin_action_buttons() -> None:
     song = build_song()
     song_service = SimpleNamespace(get_song=AsyncMock(return_value=song))
-    chart_service = SimpleNamespace(has_active_chart=AsyncMock(return_value=True))
+    chart_service = SimpleNamespace(
+        has_active_chart=AsyncMock(return_value=True),
+        get_active_chart_file=AsyncMock(return_value=build_chart_file()),
+    )
     context = build_context(song_service=song_service, chart_service=chart_service, admin_ids=(1,))
     context.user_data[SONG_BROWSER_STATE_KEY] = {
         "mode": "browse",
@@ -333,7 +367,10 @@ async def test_song_detail_for_non_admin_hides_chart_button_when_no_active_chart
 async def test_song_detail_for_admin_shows_admin_action_buttons() -> None:
     song = build_song()
     song_service = SimpleNamespace(get_song=AsyncMock(return_value=song))
-    chart_service = SimpleNamespace(has_active_chart=AsyncMock(return_value=True))
+    chart_service = SimpleNamespace(
+        has_active_chart=AsyncMock(return_value=True),
+        get_active_chart_file=AsyncMock(return_value=build_chart_file()),
+    )
     context = build_context(song_service=song_service, chart_service=chart_service, admin_ids=(1,))
     context.user_data[SONG_BROWSER_STATE_KEY] = {
         "mode": "browse",
@@ -357,10 +394,57 @@ async def test_song_detail_for_admin_shows_admin_action_buttons() -> None:
 
 
 @pytest.mark.asyncio
+async def test_song_detail_auto_sends_active_chart_after_rendering_detail() -> None:
+    song = build_song()
+    chart_file = build_chart_file()
+    song_service = SimpleNamespace(get_song=AsyncMock(return_value=song))
+    chart_service = SimpleNamespace(
+        has_active_chart=AsyncMock(return_value=True),
+        get_active_chart_file=AsyncMock(return_value=chart_file),
+    )
+    context = build_context(song_service=song_service, chart_service=chart_service)
+    update, query = build_callback_update(data="song:detail:5:0", user_id=1)
+
+    await navigation_callback_router(update, context)
+
+    query.edit_message_text.assert_awaited_once()
+    assert query.edit_message_text.await_args.args[0].startswith("Деталі пісні:")
+    chart_service.get_active_chart_file.assert_awaited_once_with(5)
+    update.effective_message.reply_photo.assert_awaited_once()
+    assert update.effective_message.reply_photo.await_args.kwargs["photo"].filename == (
+        "amazing-grace.png"
+    )
+
+
+@pytest.mark.asyncio
+async def test_song_detail_auto_sends_active_chart_each_time_detail_is_rendered() -> None:
+    song = build_song()
+    chart_file = build_chart_file()
+    song_service = SimpleNamespace(get_song=AsyncMock(return_value=song))
+    chart_service = SimpleNamespace(
+        has_active_chart=AsyncMock(return_value=True),
+        get_active_chart_file=AsyncMock(return_value=chart_file),
+    )
+    context = build_context(song_service=song_service, chart_service=chart_service)
+
+    first_update, _ = build_callback_update(data="song:detail:5:0", user_id=1)
+    second_update, _ = build_callback_update(data="song:detail:5:0", user_id=1)
+    await navigation_callback_router(first_update, context)
+    await navigation_callback_router(second_update, context)
+
+    assert chart_service.get_active_chart_file.await_count == 2
+    first_update.effective_message.reply_photo.assert_awaited_once()
+    second_update.effective_message.reply_photo.assert_awaited_once()
+
+
+@pytest.mark.asyncio
 async def test_song_detail_for_admin_keeps_admin_actions_when_no_active_chart() -> None:
     song = build_song()
     song_service = SimpleNamespace(get_song=AsyncMock(return_value=song))
-    chart_service = SimpleNamespace(has_active_chart=AsyncMock(return_value=False))
+    chart_service = SimpleNamespace(
+        has_active_chart=AsyncMock(return_value=False),
+        get_active_chart_file=AsyncMock(),
+    )
     context = build_context(song_service=song_service, chart_service=chart_service, admin_ids=(1,))
     update, query = build_callback_update(data="song:detail:5:0", user_id=1)
 
@@ -373,6 +457,68 @@ async def test_song_detail_for_admin_keeps_admin_actions_when_no_active_chart() 
     assert "Архівувати" in labels
     assert "Завантажити гармонію" in labels
     chart_service.has_active_chart.assert_awaited_once_with(5)
+    chart_service.get_active_chart_file.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_song_detail_without_active_chart_does_not_auto_send_or_show_manual_chart() -> None:
+    song = build_song()
+    song_service = SimpleNamespace(get_song=AsyncMock(return_value=song))
+    chart_service = SimpleNamespace(
+        has_active_chart=AsyncMock(return_value=False),
+        get_active_chart_file=AsyncMock(),
+    )
+    context = build_context(song_service=song_service, chart_service=chart_service, admin_ids=(1,))
+    update, query = build_callback_update(data="song:detail:5:0", user_id=2)
+
+    await navigation_callback_router(update, context)
+
+    keyboard = query.edit_message_text.await_args.kwargs["reply_markup"]
+    labels = [button.text for row in keyboard.inline_keyboard for button in row]
+    assert "Переглянути гармонію" not in labels
+    chart_service.get_active_chart_file.assert_not_awaited()
+    update.effective_message.reply_text.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_song_detail_storage_failure_keeps_detail_visible_and_sends_followup() -> None:
+    song = build_song()
+    song_service = SimpleNamespace(get_song=AsyncMock(return_value=song))
+    chart_service = SimpleNamespace(
+        has_active_chart=AsyncMock(return_value=True),
+        get_active_chart_file=AsyncMock(side_effect=ChartStorageError("download failed")),
+    )
+    context = build_context(song_service=song_service, chart_service=chart_service)
+    update, query = build_callback_update(data="song:detail:5:0", user_id=1)
+
+    await navigation_callback_router(update, context)
+
+    query.edit_message_text.assert_awaited_once()
+    assert query.edit_message_text.await_args.args[0].startswith("Деталі пісні:")
+    update.effective_message.reply_text.assert_awaited_once_with(
+        "Не вдалося завантажити файл гармонії зі сховища."
+    )
+    update.effective_message.reply_photo.assert_not_awaited()
+    update.effective_message.reply_document.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_song_detail_auto_send_stays_quiet_if_active_chart_disappears() -> None:
+    song = build_song()
+    song_service = SimpleNamespace(get_song=AsyncMock(return_value=song))
+    chart_service = SimpleNamespace(
+        has_active_chart=AsyncMock(return_value=True),
+        get_active_chart_file=AsyncMock(side_effect=SongChartNotFoundError()),
+    )
+    context = build_context(song_service=song_service, chart_service=chart_service)
+    update, query = build_callback_update(data="song:detail:5:0", user_id=1)
+
+    await navigation_callback_router(update, context)
+
+    query.edit_message_text.assert_awaited_once()
+    update.effective_message.reply_text.assert_not_awaited()
+    update.effective_message.reply_photo.assert_not_awaited()
+    update.effective_message.reply_document.assert_not_awaited()
 
 
 @pytest.mark.asyncio

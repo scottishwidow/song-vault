@@ -50,6 +50,8 @@ async def send_chart_for_song_id(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
     song_id: int,
+    *,
+    suppress_missing_chart_error: bool = False,
 ) -> None:
     if update.effective_message is None:
         return
@@ -61,6 +63,8 @@ async def send_chart_for_song_id(
         await update.effective_message.reply_text(str(error))
         return
     except SongChartNotFoundError:
+        if suppress_missing_chart_error:
+            return
         await update.effective_message.reply_text(
             f"Для пісні #{song_id} ще не завантажено гармонію."
         )
