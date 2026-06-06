@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "aws-api": {
+      "type": "stdio",
+      "command": "uvx",
+      "args": ["--python", "3.12", "awslabs.aws-api-mcp-server@latest"],
+      "env": {
+        "AWS_REGION": "${AWS_REGION}",
+        "READ_OPERATIONS_ONLY": "true",
+        "FASTMCP_LOG_LEVEL": "ERROR"
+      }
+    }
+  }
+}
