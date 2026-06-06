@@ -1,0 +1,109 @@
+name: song-vault
+
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-song_vault}
+      POSTGRES_USER: ${POSTGRES_USER:-song_vault}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${POSTGRES_USER:-song_vault} -d ${POSTGRES_DB:-song_vault}",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    restart: unless-stopped
+    stop_grace_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  minio:
+    image: ${MINIO_IMAGE:-minio/minio:latest}
+    command: server /data
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?set MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?set MINIO_ROOT_PASSWORD}
+    volumes:
+      - minio-data:/data
+    restart: unless-stopped
+    stop_grace_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  minio-init:
+    image: ${MINIO_MC_IMAGE:-minio/mc:latest}
+    depends_on:
+      minio:
+        condition: service_started
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        until mc alias set local http://minio:9000 "$$MINIO_ROOT_USER" "$$MINIO_ROOT_PASSWORD"; do sleep 2; done
+        mc mb --ignore-existing "local/$$CHART_STORAGE_BUCKET"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?set MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?set MINIO_ROOT_PASSWORD}
+      CHART_STORAGE_BUCKET: ${CHART_STORAGE_BUCKET:?set CHART_STORAGE_BUCKET}
+    restart: "no"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  bot:
+    image: ${SONG_VAULT_IMAGE:?set SONG_VAULT_IMAGE, e.g. yourname/song-vault:v1.0.0}
+    pull_policy: always
+    depends_on:
+      db:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+    environment:
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:?set TELEGRAM_BOT_TOKEN}
+      ADMIN_TELEGRAM_USER_IDS: ${ADMIN_TELEGRAM_USER_IDS:?set ADMIN_TELEGRAM_USER_IDS}
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-song_vault}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-song_vault}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      BOT_POLL_INTERVAL: ${BOT_POLL_INTERVAL:-1.0}
+      CHART_STORAGE_ENDPOINT_URL: http://minio:9000
+      CHART_STORAGE_REGION: ${CHART_STORAGE_REGION:-us-east-1}
+      CHART_STORAGE_BUCKET: ${CHART_STORAGE_BUCKET:?set CHART_STORAGE_BUCKET}
+      CHART_STORAGE_ACCESS_KEY_ID: ${MINIO_ROOT_USER}
+      CHART_STORAGE_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD}
+      CHART_STORAGE_USE_SSL: "false"
+      CHART_STORAGE_FORCE_PATH_STYLE: "true"
+      PYTHONDONTWRITEBYTECODE: "1"
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    pids_limit: 256
+    mem_limit: 512m
+    restart: unless-stopped
+    stop_grace_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  postgres-data:
+  minio-data:

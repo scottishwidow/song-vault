@@ -23,6 +23,7 @@ The MVP is complete. The current repository baseline is the finished admin-opera
 - [Architecture](docs/architecture.md)
 - [MVP scope](docs/mvp.md)
 - [Feature implementation plans](docs/features/README.md)
+- [Production deployment (AWS EC2 via SSM)](deploy/README.md)
 
 ## Quick start
 
@@ -94,6 +95,8 @@ Set these GitHub Actions secrets:
 Optional repository variable:
 
 - `DOCKERHUB_IMAGE` (defaults to `<DOCKERHUB_USERNAME>/song-vault`)
+
+To roll a published tag out to production, see [deploy/README.md](deploy/README.md).
 
 ## Environment variables
 
